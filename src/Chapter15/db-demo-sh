@@ -1,0 +1,161 @@
+#! /bin/bash
+
+. screen-funcs-sh    ## load screen manipulation functions
+. shdb-funcs-sh      ## load database functions
+
+db_init()
+{
+    DELIM=:                 ## field delimiter
+    cls                     ## clear the screen
+
+    ## We'll work with a copy of the password file
+    dbfile=$HOME/etc_passwd ## data file
+    [ -f "$dbfile" ] || cp /etc/passwd "$dbfile"
+
+    load_db "$dbfile"      ## store file in array
+
+    num_records=${#db[@]}  ## number of records
+    rec_num=0              ## counter
+    cols=$COLUMNS          ## just for the sake of brevity
+    labels=( "User name" "Password" "User ID" "Group ID" "Full name"
+             "Home directory" "Shell" )
+}
+
+reverse_bar()
+{
+    ## Set to bold reverse
+    set_attr $bold $reverse
+
+    ## Print reverse bar and message
+    printf "%${cols}.${cols}s\r %s" " " "$*"
+
+    ## Remove bold and reverse
+    set_attr 0
+}
+
+show_record()
+{
+    lw=15                                   ## Label width
+    lm=3                                    ## Left margin
+    lsp=2                                   ## Line spacing
+    fmt="%${lw}.${lw}s [$B%d$NA]: %s$cle"   ## Format string for fields
+
+    printat 1 1          ## position cursor at top left of screen
+
+    ## Display record number and total number on reverse bar
+    reverse_bar " Record $(( $rec_num + 1 )) of $num_records $db_mod"
+
+    field=0
+    while [ $field -lt ${#labels[@]} ]
+    do
+      printat $(( $field * $lsp + 3 )) $lm
+      printf "$fmt"  "${labels[$field]}" \
+                      $(( $field + 1 ))  \
+                     "${record_vals[$field]}"
+      field=$(( $field + 1 ))
+    done
+
+    menubar=$(( $field * $lsp + 5 - $lsp ))
+    printat $menubar 1
+
+    ## Print user options on reverse bar
+    reverse_bar \
+     "   [n]ext  [b]ack  [g]oto  [1-7] Edit  [a]dd  [d]elete  [s]ave  [q]uit"
+
+    prompt_line=$(( $menubar + 2 ))
+    prompt_col=$(( $lm + $lw - 8 ))
+    printat $prompt_line $prompt_col "$cle"
+}
+
+db_main()
+{
+    db_init                ## Initialize the database
+    while :                ## loop until user quits
+    do
+      ## break the current record into its constituent fields
+      split_record "${db[$rec_num]}"
+
+      show_record
+
+      ## read a single keystroke
+      read -sn1 -p "Select: "  x
+      case $x in
+          q) break ;;  ## quit; TODO: add query to save if modified
+
+          a) ## Add new record
+             rec_num=${#db[@]}
+             db[${#db[@]}]="$DELIM$DELIM$DELIM$DELIM$DELIM$DELIM"
+             num_records=${#db[@]}
+             db_mod=*                         ## Modified flag
+             ;;
+
+          b) ## move to previous record (wrap around if at first record)
+             rec_num=$(( ($rec_num + $num_records - 1) % $num_records ))
+             ;;
+
+          d) ## Delete current record
+             unset db[$rec_num]
+             db=( "${db[@]}" )
+             num_records=${#db[@]}
+             db_mod=*                         ## Modified flag
+             ;;
+
+          g) ## display a specific record (by number)
+              printat $prompt_line $prompt_col "$cle"
+              read -ep " Record number: " rec_num
+
+              ## check for valid record number
+              if [ $rec_num -gt $num_records ]
+              then
+                rec_num=$(( $num_records - 1 ))
+              elif [ $rec_num -le 1 ]
+              then
+                rec_num=0
+              else
+                rec_num=$(( $rec_num - 1 ))  ## arrays count from 0
+              fi
+              ;;
+
+          s) ## Save the database
+              printf "%s\n" "${db[@]}" > "$dbfile"
+              db_mod=   ## Clear modified flag
+              ;;
+
+          [1-7]) ## User selected a field number; prompt for data entry
+              in_field=$(( $x - 1 ))
+
+              ## Place field's current value in history
+              history -s "${record_vals[$in_field]}"
+
+              ## Place the cursor at the entry line and clear it
+              printat $prompt_line $prompt_col "$cle"
+              _getline "${labels[$in_field]}" INPUT
+
+              ## If something has been entered, and it is not the same as before
+              ## then replace the record with the modified version
+              [ -n "$INPUT" ] && [ "$INPUT" != "${record_vals[$in_field]}" ] && {
+                  record_vals[$in_field]=$INPUT    ## Store entry in field
+                  db_mod=*                         ## Modified flag
+                  _put_record "${record_vals[@]}"  ## Rebuild record
+                  db[$rec_num]=$_PUT_RECORD        ## Place new record into array
+              }
+              printat $prompt_line 1 "$cle"
+              ;;
+          *) ## display next record (wrap around if at end)
+              rec_num=$(( ($rec_num + 1) % $num_records )) ;;
+      esac
+              ## check for valid record number
+              if [ $rec_num -ge $num_records ]
+              then
+                rec_num=$(( $num_records - 1 ))
+              elif [ $rec_num -lt 1 ]
+              then
+                rec_num=0
+#              else
+#                rec_num=$(( $rec_num - 1 ))  ## arrays count from 0
+              fi
+    done
+    printf "\n\n"
+}
+
+db_main    ## Enter the main loop

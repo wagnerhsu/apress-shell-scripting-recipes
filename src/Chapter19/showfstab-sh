@@ -1,0 +1,9 @@
+awk '/#.*/ { print; next }
+    { printf "device %s\n", $1
+      printf "\tmountpoint\t%s\n", $2
+      printf "\ttype\t%s\n", $3
+      printf "\toptions\t%s\n", $4
+      printf "\tdump\t%s\n", $5
+      printf "\tpass\t%s\n\n", $6
+    }' "${@:-/etc/fstab}"
+

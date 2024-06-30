@@ -1,0 +1,80 @@
+
+. standard-funcs  ## Load the standard functions
+
+eq_query()
+{
+    [ $# -ne 2 ] && return 5
+    eq_1=$1
+    eq_2=$2
+    filetype=`file $eq_1`
+    printf "\n"
+    printf "\t%d. Delete %s\n" 1 "$eq_1"  2 "$eq_2"
+    printf "\t%s\n" "3. Make '$eq_1' a symlink to '$eq_2'" \
+                    "4. Make '$eq_2' a symlink to '$eq_1'" \
+                    "5. Ignore"
+
+    printf "\n\t%s: %d  bytes:  "    "${filetype#*: }"  $size
+    get_key < /dev/tty
+    printf "\n"
+    case $_KEY in
+        1) rm "$eq_1" && printf "\n\tRemoved $eq_1\n\n" ;;
+        2) rm "$eq_2" && printf "\n\tRemoved $eq_2\n\n" ;;
+        3) ln -sf "$eq_2" "$eq_1" && { printf "\n"; ls -l "$eq_1"; } ;;
+        4) ln -sf "$eq_1" "$eq_2" && { printf "\n"; ls -l "$eq_2"; } ;;
+        q) break 3 ;;
+        *) return 0 ;;
+    esac
+    _EQ_QUERY=$_KEY
+}
+
+rm_dups()
+{
+    ls -l "$@" | sort -k5n | {
+        read -r perms_ links_ owner_ group_ size_ month_ day_ time_ file_
+        while read -r perms links owner group size month day time file
+        do
+          [ ${verbose:-0} -ge 1 ] && printf "%10s %s\n" $size "$file" >&2
+          [ -f "$file" ] || continue
+          [ ${size:--0} -eq ${size_:--1} ] &&
+               cmp $file $file_ >/dev/null && {
+               [ ${verbose:-0} -ge 1 ] && printf "%10s %s\n" $size_ "$file_" >&2
+               eq_query $file $file_
+          }
+
+          case $_EQ_QUERY in
+              1|3) continue ;;
+          esac
+          size_=$size
+          file_=$file
+        done
+    }
+}
+
+zrm=0
+TMOUT=60
+
+## Parse command-line options
+opts=zv
+while getopts $opts opt
+do
+  case $opt in
+      v) verbose=$(( ${verbose:-0} + 1 )) ;;
+      z) zrm=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## Reset tty on exit
+trap cleanup EXIT
+
+set -- "${@:-.}"
+for dir
+do
+  (
+      cd "${dir:-.}" || continue
+      : ${PWD:=`pwd`}
+      [ $zrm -ge 1 ] && zrm *
+      rm_dups
+  )
+done
+

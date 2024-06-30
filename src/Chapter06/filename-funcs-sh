@@ -1,0 +1,243 @@
+## source the variable and function libraries
+. standard-vars$shx
+. string-funcs$shx
+
+## define characters for portable and OK character sets
+## pfname_chars is a list of acceptable characters
+pfname_chars="a-zA-Z._0-9-"
+## xfname_chars is a list of unacceptable characters
+xfname_chars="][|#?><*${BKS}\$'\"${SPC}${NL}${TAB}${CR}${BS}${DEL}()"
+
+strip_trailing_slashes()
+{
+    _STRIP=$1
+    while :
+    do
+       case $_STRIP in
+          ## If the last characer is a slash, remove it
+          */) _STRIP=${_STRIP%/} ;;
+          ## otherwise exit the loop (and function)
+          *) break ;;
+       esac
+    done
+}
+
+
+
+_basename() ## extract the last element from a pathname
+{
+    fn_path=$1
+    fn_suffix=$2
+    case $fn_path in
+        ## The spec says: "If string is a null string, it is
+        ## unspecified whether the resulting string is '.'  or a
+        ## null string." This implementation returns a null string
+        "") _BASENAME=; return ;;
+        *)
+            strip_trailing_slashes "$fn_path"
+            case $_STRIP in
+                "") fn_path="/" ;;
+                *) fn_path=${_STRIP##*/} ;;
+            esac
+            ;;
+    esac
+
+    ## If a suffix was given, and it is the final portion of the file name (but not
+    ## the whole name), then remove it.
+    case $fn_path in
+	$fn_suffix | "/" ) _BASENAME="$fn_path" ;;
+        *) _BASENAME=${fn_path%$fn_suffix} ;;
+    esac
+}
+
+_dirname()
+{
+    _DIRNAME=$1
+    strip_trailing_slashes
+    case $_DIRNAME in
+        "") _DIRNAME='/'; return ;;
+        */*) _DIRNAME="${_DIRNAME%/*}" ;;
+        *) _DIRNAME='.'; return ;;
+    esac
+    strip_trailing_slashes
+     _DIRNAME=${_DIRNAME:-/}
+}
+
+dirname()
+{
+    _dirname "$@" &&
+    printf "%s\n" "$_DIRNAME"
+}
+
+is_pfname()
+{
+   pfname_test="[!$pfname_chars]"  ## Pattern to use in the case statement
+   case $1 in
+      ## Test for empty filename, leading hyphen, or deprecated characters
+      "" | -* | *$pfname_test*) return 1 ;;
+   esac
+}
+
+is_OKfname()
+{
+   xfname_test="[$xfname_chars]" ## Pattern to use in the case statement
+   case $1 in
+      ## Test for empty filename, leading hyphen, or deprecated characters
+      "" | -* | *$xfname_test*) return 1 ;;
+   esac
+}
+
+_pfname()
+{
+    pfname_pat="[!$pfname_chars]"  ## Pattern for case statement
+    _gsub "$1" "$pfname_pat" "${rpl_char:-_}" ## Change unacceptable characters
+    case $_GSUB in
+        -*) _PFNAME=_${_GSUB#?} ;; ## Convert leading hyphen to underscore
+        *) _PFNAME=$_GSUB ;;
+    esac
+}
+
+pfname()
+{
+    _pfname "$@" &&
+    printf "%s\n" "$_PFNAME"
+}
+
+_OKfname()
+{
+    xfname_pat="[$xfname_chars]"
+    _gsub "$1" "$xfname_pat" "${rpl_char:-_}"
+     case $_GSUB in
+        -*) _OKFNAME=_${_GSUB#?} ;;
+        *) _OKFNAME=$_GSUB ;;
+    esac
+}
+
+OKfname()
+{
+    _OKfname "$@" &&
+    printf "%s\n" "$_OKFNAME"
+}
+
+is_whitespc()
+{
+   case $1 in
+       *[$SPC$TAB$NL$CR]*) return 1 ;;
+   esac
+}
+
+_whitespc() ## convert whitespace to underscores
+{
+    _gsub "$1" "[ ${TAB}${NL}${CR}]" "${rpl_char:-_}"
+    case $_GSUB in
+        -*) _WHITESPC=_${_GSUB#?} ;;
+        *) _WHITESPC=$_GSUB ;;
+    esac
+}
+
+whitespc()
+{
+    _whitespc "$@"
+    printf "%s\n" "$_WHITESPC"
+}
+
+is_dir() ## is the first argument a directory?
+{
+    test -d "$1"
+}
+
+any_dirs()
+{
+  for x
+  do
+    test -d "$x" && return
+  done
+  return 1
+}
+
+_nodoublechar() ## remove duplicate characters
+{
+    _NODOUBLECHAR=$1  ## The string to modify
+    _char=${2:-_}     ## The character (or string) to operate on
+    while :
+    do
+      case $_NODOUBLECHAR in
+         ## If there is a double instance of the string,
+         ## reduce toa single instance
+         *${_char}${_char}*) _gsub "$_NODOUBLECHAR" "${_char}${_char}" "${_char}"
+                  _NODOUBLECHAR=$_GSUB
+                  ;;
+          *) break ;; ## All clear; exit the loop and function
+      esac
+    done
+}
+
+nodoublechar()
+{
+    _nodoublechar "$@" &&
+    printf "%s\n" "$_NODOUBLECHAR"
+}
+
+_new_filename()
+{
+     ${ff_cmd:=_pfname} "$1"
+     case $ff_cmd in
+         _pfname) _NEW_FILENAME=$_PFNAME ;;
+         _OKfname) _NEW_FILENAME=$_OKFNAME ;;
+         _whitespc) _NEW_FILENAME=$_WHITESPC ;;
+         _nodoublechar) _NEW_FILENAME=$_NODOUBLECHAR ;;
+     esac
+     [ $nodoublechar -eq 1 ] && {
+         _nodoublechar "$_NEW_FILENAME" _
+         _NEW_FILENAME=$_NODOUBLECHAR
+     }
+}
+
+new_filename()
+{
+    _new_filename "$@"
+    printf "%s\n" "$_NEW_FILENAME"
+}
+
+fix_pwd()
+{
+    ## Print name of directory in verbose mode
+    [ ${verbose:=0} -ge 1 ] && printf ":: %s ::\n" "${PWD%/}/" >&2
+
+    ## Loop through all files that match the pattern
+    for file in ${pattern:-*}
+    do
+      [ -e "$file" ] || continue ## should be unnecessary
+
+      ## find file type
+      [ -f "$file" ] && f_type=f
+      [ -d "$file" ] && f_type=d
+
+      ## only operate on regular files and directories
+      case $f_type$d_only$f_only in
+          f0? | d?0) ;;
+          *) continue ;;
+      esac
+
+      ## check whether filename is OK, and modify if not
+      is${ff_cmd:=_pfname} "$file" || {
+          _new_filename "$file"
+          new_base=$_NEW_FILENAME
+          n=1
+
+          ## if $_NEW_FILENAME exists, append a number
+          while [ -e "$_NEW_FILENAME" ]
+          do
+            _NEW_FILENAME=$new_base.$n
+            [ $verbose -ge 1 ] && printf "%s\r" "$_NEW_FILENAME" >&2
+            n=$(( $n + 1 ))
+          done
+
+          [ $verbose -ge 1 ] &&
+                 printf "%s -> %s  " "$file"  "$_NEW_FILENAME" >&2
+          mv "./$file" "./$_NEW_FILENAME" && [ $verbose -ge 1 ] &&
+                  printf "OK\n" >&2 || printf "failed\n" >&2
+      }
+    done
+}
+

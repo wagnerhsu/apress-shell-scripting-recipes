@@ -1,0 +1,194 @@
+#!/bin/bash
+
+help()
+{
+    echo "
+
+      b - Back (previous message)
+      d - Delete message
+      f - Full header
+      g - Goto message number
+      h - Help
+      n - Next message
+      p - Show next page
+      q - Quit
+      r - Retrieve (download message to local mailbox)
+      s - Save message to file
+      u - undelete current message
+      U - unmark all messages marked for deletion
+      v - View message
+      x - Expunge all deleted messages
+"
+}
+
+interac()
+{
+    [ $interactive -ge 2 ] && printf "\n"
+    printf "== b,d,f,g,h,n,p,q,r,s,u,U,v,x ==> "
+    get_key m
+    printf "\r%${COLUMNS}.${COLUMNS}s\r" " "
+    case $m in
+        b|B) msg_num=$(( $msg_num - 1 ))
+                [ $msg_num -lt 1 ] && msg_num=1
+                continue
+                ;;
+        c) clear ;;
+        d|D) msg_status[$msg_num]=D
+             ;;
+        g|G) _getline "Go to message number (1-$num_messages)" nn
+             case $nn in *[^0-9]*) echo "Not a number"; continue;; esac
+             msg_num=$nn
+             continue
+             ;;
+        f|F) showheader -f
+             [ $interactive -ge 2 ] && press_any_key
+             continue
+             ;;
+        h|H) help
+             [ $interactive -ge 2 ] && press_any_key
+             continue
+             ;;
+        p|" ") n=$(( $LINES - 3 ))
+               [ $msg_num -ge $num_messages ] && continue
+               [ $interactive -ge 2 ] && n=0
+               while [ $n -gt 0 ]
+               do
+                 msg_num=$(( $msg_num + 1 ))
+                 [ $msg_num -ge $num_messages ] && break
+                 getheader $msg_num
+                 header_summary $msg_num
+                 n=$(( $n - 1 ))
+               done
+               ;;
+        q|Q) expunge
+             echo quit >&3
+             kill_dir
+             break ;;
+        r|R) retr && msg_status[$msg_num]=R ;;
+        s|S) popcmd retr $msg_num
+             _poparray <&3
+             lines=${#_POPARRAY[@]}
+             printf "\r%${COLUMNS}.${COLUMNS}s\r" " "
+             _getline "Name of file" file
+             [ -z "$file" ] && { echo NOT SAVED; continue; }
+             printf "%s\n" "${_POPARRAY[@]}" > "$file" &&
+                    msg_status[$msg_num]=S || continue
+             ;;
+        u) case ${msg_status[$msg_num]} in
+              D) msg_status[$msg_num]= ;;
+           esac
+           ;;
+        U) msg=1
+           while [ $msg -lt $num_messages ]
+           do
+             case ${msg_status[$msg]} in
+                 D) msg_status[$msg]= ;;
+             esac
+             msg=$(( $msg + 1 ))
+           done
+           ;;
+        v|V) popcmd retr $msg_num
+             _poparray <&3
+             printf "\n"
+             lines=${#_POPARRAY[@]}
+             if [ ${lines} -lt $(( $LINES - 3 )) ]
+             then
+               printf "%-${COLUMNS}.${COLUMNS}s\n" "${_POPARRAY[@]}"
+               [ $interactive -ge 2 ] && press_any_key
+             else
+               printf "%-${COLUMNS}.${COLUMNS}s\n" "${_POPARRAY[@]}" |
+                                                              ${PAGER:-less}
+             fi
+             printf "\n"
+             continue
+             ;;
+        x|X) if expunge
+             then
+                connect
+                popcmd stat
+                num_messages=${num:-0}
+                getsizes
+             fi
+             ;;
+    esac
+}
+
+case $progname in
+    *-sh) shx=-sh ;;
+    *) shx= ;;
+esac
+
+. pop3-funcs$shx
+interactive=0
+TMOUT=
+
+## parse the command line options
+while getopts ic: opt
+do
+  case $opt in
+      c) config_file=$OPTARG;;
+      i) interactive=$(( $interactive + 1 )) ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+[ -z "$COLUMNS" ] && [ -t 0 ] && {
+    set -- `stty size`
+    COLUMNS=${2:-80}
+    LINES=${1:-24}
+}
+
+echo CONFIG
+config
+case $? in
+  4) create_config ;;
+  0) ;;
+  *) exit 5 ;;
+esac
+
+set_dirs || cleanup 5
+
+## log files are not necessary for an interactive script
+log_file=/dev/null
+summary_file=/dev/null
+
+## connect and log in
+connect || exit $?
+
+## Set exit trap
+trap cleanup EXIT
+
+## Ask server for number of messages
+popcmd stat || exit 4
+num_messages=${num:-0}
+
+## Turn off echoing of keypresses
+[ -t 0 ] && stty -echo
+
+printf "\nNumber of messages: %d\n\n" $num_messages
+
+## Exit if there are no messages
+[ $num_messages -eq 0 ] && exit
+
+msg_num=1
+
+## Cycle through all the messages
+while :
+do
+  [ $msg_num -gt $num_messages ] && msg_num=$num_messages
+  getheader $msg_num
+  if [ $interactive -ge 2 ]
+  then
+    clear
+    showheader
+    interac
+  elif [ $interactive -ge 1 ]
+  then
+    header_summary $msg_num
+    interac
+  else
+    header_summary $msg_num
+    [ $msg_num -ge $num_messages ] && break
+  fi
+  msg_num=$(( $msg_num + 1 ))
+done

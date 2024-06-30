@@ -1,0 +1,26 @@
+cmdpath()
+{
+    _CMD=${1##*/}
+    oldIFS=$IFS
+    IFS=:
+    set -- $PATH
+    IFS=$oldIFS
+    for _DIR
+    do
+      if [ -x "$_DIR/$_CMD" ]
+      then
+        cmd=$_DIR/$_CMD
+        return
+      fi
+    done
+}
+
+if [ -n "$BASH_VERSION" ]
+then
+  cmd=$(type -p "$1")
+else
+  cmdpath "$1"
+fi
+
+${PAGER:-less} "$cmd"
+

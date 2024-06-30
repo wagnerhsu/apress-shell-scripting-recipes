@@ -1,0 +1,63 @@
+progname=${0##*/}
+version=1.0
+
+die() {
+    error=$1
+    shift
+    printf "%s: %s\n" "$progname" "$*" >&2
+    exit $error
+}
+
+blank=1
+truncate=0
+suppress=0
+nwidth=5
+cchar=
+last=
+opts=bstn:N:
+n=1
+
+while getopts $opts var
+do
+  case $var in
+      b) blank=0 ;;
+      s) suppress=1 ;;
+      n) case $OPTARG in
+           *[!0-9]*) die 5 "Numeric value required"
+         esac
+         n=$OPTARG
+         ;;
+      N) case $OPTARG in
+           *[!0-9]*) die 5 "Numeric value required"
+         esac
+         nwidth=$OPTARG
+         ;;
+      t) truncate=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+if [ $truncate -eq 1 ]
+then
+  width=$(( $COLUMNS - ${nwidth} + 1 ))
+  fmt="%${nwidth}d %-${width}.${width}s\n"
+else
+  fmt="%5d %s\n"
+fi
+
+cat ${1+"$@"} | {
+ while IFS= read -r line
+ do
+   case $line in
+     "") [ "$last" = "" ] && [ $suppress -eq 1 ] && continue
+         [ $blank -eq 0 ] && {
+             echo
+             last=$line
+             continue
+         } ;;
+   esac
+   printf "$fmt" $n "$line"
+   last=$line
+   n=$(( $n + 1 ))
+ done
+}

@@ -1,0 +1,114 @@
+file_info()
+{
+   ifile=$1
+   [ -r "$ifile" ] || return 5
+   [ -d "$ifile" ] && [ $nodirs -ge 1 ] && return 1
+   set -- `wc "$file" 2>/dev/null` `file "$file"`
+   lines=$1
+   words=$2
+   size=$3
+   shift 5
+   file_type=$*
+   case $file in
+     *[-.]sh) desc=`grep -i "description=" "$file"`
+              desc=${desc#*description=}
+              desc=${desc%%$NL*}
+              ;;
+     *) desc= ;;
+   esac
+}
+
+NL='
+'
+progname=${0##*/}
+version=1.0
+cu_up="\e[A"  ## ANSI code to move cursor up one line
+summary=0
+clear=0
+noheader=0
+empty=0
+nodirs=0
+
+opts=csHVz
+
+while getopts $opts var
+do
+  case $var in
+      c) clear=1 ;;
+      D) nodirs=1 ;;
+      H) noheader=1 ;;
+      s) summary=1 ;;
+      z) empty=1 ;;
+
+      V) printf "%s\n" "$progname, version $version" ; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+_ll=6
+_wl=6
+_cl=7
+_fl=25
+_tl=$(( $COLUMNS - $_ll - $_wl - $_cl - $_fl - 4 ))
+_sfl=$(( $COLUMNS - 15 ))
+
+## create a bar wide enough to fill the width of the screen or window
+bar=-----------------------------------------
+while [ ${#bar} -lt ${COLUMNS} ]
+do
+   bar=$bar$bar$bar
+done
+## or you can use the repeat function from the next chapter
+## bar=$(repeat --- $COLUMNS)
+
+[ $noheader -eq 0 -a $summary -eq 1 ] && {
+  printf "\n%${_ll}s %${_wl}s %${_cl}s %-${_fl}.${_fl}s %-${_tl}.${_tl}s\n" \
+      LINES WORDS SIZE "FILE NAME" "FILE TYPE"
+  printf "%${COLUMNS}.${COLUMNS}s" "$bar"
+}
+
+################################################################################
+## If you are using an older version of Solaris or SunOS,
+## in which ls -l doesn't print the group, uncomment the following line
+## ls_opt=-g
+################################################################################
+
+ls -il $ls_opt "$@" |
+ while read inode perms links owner group size month day time file
+ do
+   [ $empty -eq 1 -a ${size:-0} -eq 0 ] && continue
+
+   ## Extract file name if it's a symbolic link;
+   ## this will fail in the unlikely event that
+   ## the target of the link contains " -> "
+   ## See Chapter 6 for a script to fix badly formed filenames
+   case $perms in
+       l*) file=${file% -\> *} ;;
+   esac
+   file_info "$file" || continue
+   if [ $summary -ge 1 ]
+   then
+     printf "%${_ll}d %${_wl}d %${_cl}d %-${_fl}.${_fl}s %-${_tl}.${_tl}s\n" \
+            $lines $words $size "$file" "$file_type"
+   else
+     [ $clear -ge 1 ] && printf "${CLS:=`clear`}"
+     printf "\n\n"
+     printf "        Name: %-${_sfl}.${_sfl}s\n" "$file"
+     printf "        Type: %-${_sfl}.${_sfl}s\n" "$file_type"
+     printf "       Inode: %-${_sfl}.${_sfl}s\n" "$inode"
+     [ -n "$desc" ] &&
+        printf " Description: %-${_sfl}.${_sfl}s\n" "$desc"
+     printf "        Size: %-${_sfl}.${_sfl}s\n" "$size"
+     printf "       Lines: %-${_sfl}.${_sfl}s\n" "$lines"
+     printf "       Words: %-${_sfl}.${_sfl}s\n" "$words"
+     printf " Owner:group: %-${_sfl}.${_sfl}s\n" "$owner:$group"
+     printf " Permissions: %-${_sfl}.${_sfl}s\n" "$perms"
+     printf "        Date: %-${_sfl}.${_sfl}s\n" "$month $day $time"
+     printf "\n\n   Press ENTER (q=Quit)\r"
+     read x </dev/tty
+     case $x in
+         q|Q) break;;
+     esac
+     printf "$cu_up%${COLUMNS}.${COLUMNS}s\n" "$bar"
+   fi
+ done

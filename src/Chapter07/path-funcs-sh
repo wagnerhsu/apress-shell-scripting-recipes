@@ -1,0 +1,133 @@
+path()
+{
+    if [ -n "$*" ]; then
+        addpath "$@" || return
+    else
+       ( ## Use a subshell so IFS is not changed in the main shell
+         IFS=:
+         printf "%s\n" ${PATH}
+       )
+    fi
+}
+
+_unslash()
+{
+    _UNSLASH=$1
+    while :
+    do
+      case $_UNSLASH in
+          ## remove trailing slashes
+          */) _UNSLASH=${_UNSLASH%/} ;;
+
+          ## change // to /
+          *//*) type _gsub >/dev/null 2>&1 || . string-funcs
+              _gsub "$_UNSLASH" "//" "/"
+              _UNSLASH=$_GSUB
+              ;;
+
+          *) break ;;
+      esac
+    done
+}
+
+unslash()
+{
+    _unslash "$@" && printf "%s\n" "$_UNSLASH"
+}
+
+checkpath()
+{
+    verbose=0
+    OPTIND=1
+    while getopts  v var
+    do
+      case "$var" in
+          v) verbose=1 ;;
+      esac
+    done
+
+    ## assign the directories in PATH to the positional parameters
+    oldIFS=$IFS
+    IFS=":"
+    set -- $PATH
+    IFS=$oldIFS
+
+    newPATH=
+    for p  ## Loop through directories in $PATH (now set as positional parameters)
+    do
+      case $p in
+          ""|.) continue ;; ## do not allow current directory in PATH
+      esac
+      if [ -d "$p" ] ## Is it actually a directory?
+      then
+        _unslash "$p"   ## Remove multiple slashes
+        p=$_UNSLASH
+        case :$newPATH: in
+            *:"$p":*) [ $verbose -ge 1 ] &&
+                echo "checkpath: removing $p (already in PATH)" >&2
+                ;;
+            *) newPATH=${newPATH:+$newPATH:}$p ;; ## Add directory
+        esac
+      else
+          [ $verbose -ge 1 ] &&
+             echo "checkpath: $p is not a directory; removing it from PATH" >&2
+      fi
+    done
+    PATH=$newPATH
+}
+
+addpath()
+{
+    ## Set defaults
+    prefix=0  ## Do not insert at beginning of PATH
+    quiet=0   ## Do print information on bad directories
+
+    ## Parse command-line options
+    OPTIND=1
+    while getopts iq var
+    do
+      case "$var" in
+          i) prefix=1 ;;
+          q) quiet=1 ;;
+      esac
+    done
+    shift $(( $OPTIND - 1 ))
+
+    for p   ## Loop through directories on the command line
+    do
+      _unslash "$p"    ## remove double slashes
+      p=$_UNSLASH
+      case :$PATH: in
+          *:$p:*) [ $quiet -eq 0 ] && echo "addpath: $p already in path" >&2
+                  continue  ## Skip directories already in PATH
+              ;;
+      esac
+      if [ -d "$p" ]
+      then
+          if [ $prefix -eq 1 ]
+          then
+              PATH="$p:$PATH"
+          else
+              PATH="$PATH:$p"
+          fi
+      else
+          [ $quiet -eq 0 ] && echo "addpath: $p is not a directory" >&2
+      fi
+    done
+}
+
+rmpath() # remove directory or directories from $PATH
+{
+    for p in "$@"
+    do
+      _unslash "$p"
+      p=$_UNSLASH
+      case $PATH in               ## Look for directory....
+          "$p":*) PATH=${PATH#$p:} ;; ## at beginning of PATH
+          *:"$p") PATH=${PATH%:$p} ;; ## at end of PATH
+          *:"$p":*) type _sub >/dev/null 2>&1 || . string-funcs
+                   _sub "$PATH" ":$p:" ":" ## in the middle
+                   PATH=$_SUB ;;
+      esac
+    done
+}

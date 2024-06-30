@@ -1,0 +1,49 @@
+. screen-funcs         ## load the libraries
+#cls $cyan $cyan       ## clear the screen (with alternate version of cls)
+printf "$cu_invis"     ## hide the cursor
+
+[ -n "$COLUMNS" ] || get_size
+
+## set attributes and colors for box 1
+bx_border=$(set_attr 0; set_bg $yellow)
+bx_body=$(set_attr 0 $bold; set_fgbg $white $red)
+
+## print box 1 to a variable
+box1=$(box_block_at 5 10 "A Midsummer Night's Dream" \
+    "William Shakespeare")
+
+## set attributes and colors for box 2
+bx_border=$(set_attr 0; set_bg $black)
+bx_body=$(set_attr 0 $reverse $bold; set_fgbg $red $white)
+
+## print box 2 to a variable
+box2=$(box_block_at 3 18 "Silas Marner" "George Eliot")
+
+## set attributes and colors for box 3
+bx_border=$(set_attr 0; set_bg $blue)
+bx_body=$(set_attr 0; set_fgbg $black $white)
+
+## print box 3 to a variable
+box3=$(box_block_at 7 28 "How the Grinch Stole Christmas" "Dr. Seuss")
+
+## print all three overlapping boxes
+printf "$box1"
+printf "$box2"
+printf "$box3"
+
+## take a nap
+sleep 1
+
+## move boxes to the front
+printf "$box1"
+sleep 1
+printf "$box3"
+sleep 1
+printf "$box2"
+sleep 1
+printf "$box1"
+sleep 1
+printf "$box3"
+
+# restore cursor and move down a few lines
+printf "$cu_vis\n\n\n\n"

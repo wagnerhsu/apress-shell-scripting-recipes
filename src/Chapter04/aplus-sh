@@ -1,0 +1,27 @@
+progname=${0##*/}
+compounds=
+letters=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+
+while getopts cl: var
+do
+  case $var in
+      c) compounds=1 ;;
+      l) letters=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+word=$1
+
+while [ -n "$letters" ]
+do
+  _temp=${letters#?}
+  l=${letters%$_temp}
+  letters=$_temp
+  printf "+$l:\r" >&2
+  result=`anagram ${compounds:+-c} "$word$l"`
+  [ -n "$result" ] && {
+      printf "+%s: " "$l"
+      echo $result
+  }
+done

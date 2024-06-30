@@ -1,0 +1,577 @@
+#!/bin/echo Source this file:
+
+source standard-funcs$shx
+
+config()
+{
+    ## initialize miscellaneous variables and functions
+    . standard-funcs$shx
+    shopt -s checkwinsize
+    date_vars
+    verbose=0
+    silent=0
+    wsp=$' \t\n'
+    bar==================================================================side ===
+    bar=$bar$bar$bar$bar
+    mvopt=${mvopt}  ## options for mv; e.g., (if GNU) -v for verbose mode
+    pfilter_dir=$HOME/.pfilter
+
+    ## Check directories and create if one doesn't exist
+    checkdirs $pfilter_dir/headers $pfilter_dir/logs || return 5
+
+    log_file=$pfilter_dir/logs/$TODAY.log
+    summary_file=$pfilter_dir/logs/$TODAY.summary
+    config_file=${config_file:-$pfilter_dir/pop3.cfg}
+
+    ## no. of lines to retrieve from message along with header
+    body_lines=20
+
+    ## delivery method: procmail or mbox or .....
+    delivery=procmail
+
+    ## file to use if delivery=mbox
+    ## single quotes are used, so that $header_dir is not expanded ... yet
+    mbox='$header_dir/mbox'
+
+    ## whether or not to retrieve messages
+    retrieve_messages=1
+
+    ## 1 = delete retrieved messages from server
+    delete_retrieved=1
+
+    ## use top if message is larger than min_top_size
+    ## otherwise use retr
+    min_top_size=4000
+
+    ## files containing regular expressions, one to a line...
+
+      ## patterns to accept without further filtering
+      allow_file=$pfilter_dir/pf_allow*  ## whitelist
+
+      ## patterns to be deleted
+      deny_file=$pfilter_dir/pf_deny*   ## blacklist
+
+    ## how to deal with $header_dir on exiting
+    ## possibilities are delete, compress, makelog, ....
+    cleanup=compress
+
+    unset server user password
+    ## read configuration from file
+    . ${config_file:=$pfilter_dir/pop3.cfg} 2>/dev/null || create_config &&
+    . ${config_file:-$pfilter_dir/pop3.cfg} || return 4
+}
+
+create_config()
+{
+    printf "\n\n"
+    while :
+    do
+      [ -n "$server" ] || _getline " Enter pop3 mail server" server
+      [ -n "$user" ]      || _getline "        Enter user name" user
+      [ -n "$password" ]  || _getline "         Enter password" password
+      printf "\n\n\t1.      Server: %s\n" $server
+      printf "\t2.        User: %s\n" $user
+      printf "\t3.    Password: %s\n" "${password//?/*}"
+      printf "\t4. Config file: %s\n\n" $config_file
+
+      read -sn1 -p " To make a change, enter the number, otherwise press <ENTER>: " l
+      echo
+      case $l in
+	          1)
+	              _getline " Enter pop3 mail server" server
+	              ;;
+	          2)
+	              _getline "        Enter user name" user
+	              ;;
+	          3)
+	              _getline "         Enter password" password
+	              ;;
+	          4)
+              _getline "      Enter config file" config_file
+	              ;;
+	          *) break ;;
+      esac
+    done
+    echo
+    {
+	        echo "server=$server"
+	        echo "user=$user"
+	        echo "password=$password"
+    } > "$config_file"
+}
+
+set_dirs()
+{
+    local num
+    local hd=$pfilter_dir/headers/$datestamp-$$
+
+    ## create unique name for this instance's directory
+    while [ -d "$hd${num:+.$num}" ]
+    do
+      num=$(( $num + 1 ))
+    done
+    header_dir=$hd${num:+.$num}
+
+    ## create directory and subdirectories
+    mkdir -pm 700 "$header_dir" "$header_dir/deleted" "$header_dir/allowed"
+
+    ## expand $header_dir to current value
+    eval "mbox=$mbox"
+
+    ## return code depends on whether $header_dir
+    ## was successfully created or not
+    test -d "$header_dir/deleted"
+}
+
+connect()
+{
+    exec 3<>/dev/tcp/$server/${port:-110}
+    read ok line <&3
+    [ "${ok%$CR}" = "+OK" ] || return 1
+    msg="${ok%$CR} Connected to $server, port $port, user $user"
+    echo "$msg" >> "$summary_file"
+    popcmd user $user  || return 2
+    verbose=1 popcmd pass $password >> "$summary_file" || return 3
+}
+
+popcmd()
+{
+    cmd=$*
+    echo $cmd >&3
+    read line <&3
+    line=${line%$CR} ## remove carriage return
+    set -- $line ""
+    ok=$1
+    num=$2
+    shift 2
+    x=$*
+    [ ${verbose:-0} -ge 1 ] &&
+             printf "%s\n" "$line" >> "$summary_file"
+    [ "$ok" = "+OK" ] || {
+            printf "popcmd: $cmd failed -- $line\n" >> "$summary_file"
+            return 5
+            }
+}
+
+popread()
+{
+    local header=${header:-0}
+    local X
+    local wsp="[ $TAB]"
+    while IFS= read -r line
+    do
+      line=${line%$CR}
+      case $line in
+          .) break ;;
+          *)  if [ $header -eq 1 ]
+              then
+                case $line in
+                    "") header=0
+                        printf "\n\n"
+                        ;;
+                    $wsp*) printf "%s " $line ;;
+                    *) printf "%s%s" "$X" "$line" ;;
+                esac
+              else
+                printf "%s\n" "$line"
+              fi
+              ;;
+      esac
+      X=$NL
+    done
+}
+
+_poparray() ## read lines up to lone dot into _POPARRAY[]
+{
+    unset _POPARRAY
+    while IFS= read -r line
+    do
+      line=${line%$CR}
+      case $line in
+          .) break ;;
+          *) _POPARRAY[${#_POPARRAY[@]}]=$line ;;
+      esac
+    done
+}
+
+parse_header()
+{
+    local IFS=$NL       ## NL is a newline, defined in standard-funcs
+    local msg_num=${1:-$msg_num}  ## Message number from command line
+
+    ## Header labels begin with a label, followed by a colon.
+    ## They usually only have initial capital only, but sometimes they are all
+    ## caps, or other combinations. The variables store patterns that will match
+    ## any combinastion of upper and lower case.
+    local subject='[Ss][Uu][Bb][Jj][Ee][Cc][Tt]:'
+    local from='[Ff][Rr][Oo][Mm]:'
+    local reply='[Rr][Ee][Pp][Ll][Yy]-[Tt][Oo]:'
+    local msgID='[Mm][Ee][Ss][Ss][Aa][Gg][Ee]-[Ii][Dd]:'
+    local sender='[Ss][Ee][Nn][Dd][Ee][Rr]:'
+    local date='[Dd][Aa][Tt][Ee]:'
+    local to='[Tt][Oo]:'
+    local cc='[Cc][Cc]:'
+
+    ## The body of the message follows a blank line, i.e. two successive newlines
+    msg_body[$msg_num]=${msg_header[$msg_num]#*$NL$NL}
+
+    ## The message header ends with a blank line
+    msg_header[$msg_num]=${msg_header[$msg_num]%%$NL$NL*}
+    msg_status[$msg_num]=' ' ## Reset status
+
+    ## Examine each line of the header and store in appropriate array
+    for line in ${msg_header[$msg_num]}
+    do
+      case $line in
+        "") break ;; ## end of header
+        $subject*) msg_subject[$msg_num]=${line#*: } ;;
+        $from*)    msg_from[$msg_num]=${line#*: }
+                   xtr_addr $msg_num
+                   ;;
+        $to*)      msg_to[$msg_num]=${line#*: } ;;
+        $cc*)      msg_cc[$msg_num]=${line#*: } ;;
+        $date*)    msg_date[$msg_num]=${line#*: } ;;
+        $reply*)   msg_reply_to[$msg_num]=${line#*: } ;;
+        $sender*)  msg_sender[$msg_num]=${line#*: } ;;
+        $msgID*)   msg_id[$msg_num]=${line#*: } ;;
+      esac
+    done
+}
+
+getheader()
+{
+    local msg_num=${1:-$msg_num}
+    local body_lines=${2:-$body_lines}
+    local verbose=0
+    local header=0
+    if [ -z "${msg_status[$msg_num]}" ]
+    then
+      popcmd list $msg_num || return 6
+      msg_size[$msg_num]=$size
+      popcmd top $msg_num $body_lines || return 6
+      msg_header[$msg_num]=`popread <&3`
+      parse_header $msg_num
+    fi
+}
+
+getheaders() ## read message headers into array and save to files
+{
+    local msg_num=0
+    while [ $(( msg_num += 1 )) -le $num_messages ]; do
+        ## Get header only if message has not been deleted
+        if [ "${msg_status[$msg_num]}" != "D" ]
+        then
+          ## Send the "top" command
+          verbose=0 popcmd top $msg_num $body_lines || return 6
+
+          ## "top" was successful, so read the header
+          msg_header[$msg_num]=`header=1 popread <&3`
+
+          ## Save the header in its own file
+          printf "%s\n" "${msg_header[$msg_num]}" > "$header_dir/$msg_num"
+
+          ## Break the header into its parts and store in the various arrays
+          parse_header $msg_num
+        fi
+        if [ ${hdrlist:-0} -ge 1 ]
+        then
+          header_summary $msg_num
+        fi
+    done
+    printf " %${#num_messages}d headers retrieved\n" $msg_num >> "$summary_file"
+}
+
+_from()
+{
+    local f_num=${1:-$msg_num}
+    from=${msg_from[$f_num]}
+    case $from in
+        *\)*) from=${from#*\(}
+              from=${from%\)*}
+              ;;
+        *) from=${from% \<*} ;;
+    esac
+    case $from in
+        \"*\") from=${from%\"}
+               from=${from#\"}
+               ;;
+        "") from=${msg_from[$f_num]} ;;
+    esac
+}
+
+header_summary()
+{
+    ## Check whether the date-funcs library has been loaded and source it if not
+    type parse_date >/dev/null 2>&1 || . date-funcs$shx
+    local msg_num=${1:-$msg_num}
+    local date w sw from subject status from fmt
+    set -- "${msg_date[$msg_num]##*, } "
+    date="$1 $2"
+
+    ## Convert message size to short form
+    _abbrev_num "${msg_size[$msg_num]}"
+
+    ## Extract name of sender, status, and subject
+    _from $msg_num
+    status=${msg_status[$msg_num]:- }
+    subject="${msg_subject[$msg_num]}"
+
+    ## Set width flag according to number of messages;
+    ## if there are 10 message, the number will use 2 characters;
+    ## if there are 1,000, it will use 4 characters
+    w=${#num_messages}.${#num_messages}
+
+    ## Calculate space remaining on line for the subject
+    sw=$(( ${COLUMNS:-80} - 45 - ${w%.*} ))
+
+    ## The format string is stored in a varaible to shorten the printf line
+    fmt="%1.1c %${w}d %10.10s %-20.20s %7s %-${sw}.${sw}s\n"
+    printf "$fmt" "$status" $msg_num "$date" "$from" "($_ABBREV_NUM)" "$subject"
+}
+
+getsizes()
+{
+    local msg_num
+    popcmd list
+    [ "$ok" != "+OK" ] && return 13
+    while read -u3 msg_num size
+    do
+      size=${size%$CR}
+      case ${msg_num%$CR} in
+          .) break ;;  ## A dot by itself on a line ends the server output
+          *) msg_size[$msg_num]=$size
+              [ ${verbose:-0} -gt 1 ] && {
+                   printf "msg: %d  size: %d\n" $msg_num $size
+                   sleep 1
+                   }
+             ;;
+      esac
+    done
+}
+
+showheader()
+{
+    local width=${COLUMNS:-80}
+    local lines=$(( ${LINES:-24} - 5 ))
+    local IFS=$NL
+    local msg header status size
+    local full=0
+    case $1 in
+        -f) shift
+            full=1
+            ;;
+    esac
+    msg=${1:-$msg_num}
+    size=${msg_size[$msg]}
+    status=${msg_status[$msg]}
+    header="  Message no. $msg   Size: $size    [${status:- }]"
+    printf "%-${COLUMNS}.$(( $COLUMNS - 9 ))s\n\n" "$header"
+    if [ $full -eq 1 ]
+    then
+      sh_header=( ${msg_header[$msg]//$NL$NL/$NL $NL} )
+      printf "%-${width}.${width}s\n" "${sh_header[@]}"
+    else
+      printf "    Date: %s\n" "${msg_date[$msg]}"
+      printf "    From: %s\n" "${msg_from[$msg]}"
+      [ -n "${msg_reply[$msg]}" ] &&
+            printf "Reply-to: %s\n" "${msg_reply[$msg]}"
+      printf "      To: %s\n" "${msg_to[$msg]}"
+      printf " Subject: %s\n" "${msg_subject[$msg]}"
+      printf "\n\n%s\n" "${msg_body[$msg]}"
+    fi | head -$lines
+}
+
+allow() ## whitelist
+{
+    local list
+    local mnum
+    local file
+    local type=A
+    cd "$header_dir" || return 5
+    for file in $allow_file
+    do
+      [ ${verbose:-0} -ge 1 ] && printf "Using %s\n" "$file" >&2
+      [ -f "$file" ] || continue
+      list=( `egrep -ilf "$file" *` )
+      [ ${#list[@]} -ge 1 ] &&
+             printf " %${#num_messages}d messages whitelisted by %s\n" \
+                ${#list[@]} "$file" >> "$summary_file"
+      [ -n "${list[*]}" ] &&
+             mv $mvopt "${list[@]}" "allowed"
+      for mnum in "${list[@]}"
+      do
+          msg_status[$mnum]=A
+          msg_filter[$mnum]=$file
+      done
+    done
+}
+
+filter() ## remove unwanted mail
+{
+    local list
+    local mnum
+    local file
+    local type=D
+    local s
+    cd "$header_dir" || return 5
+    for file in $deny_file
+    do
+      list=( `egrep -ilf "$file" *` )
+      ## the following 3 lines should be cleaned up
+      [ ${#list[@]} -eq 1 ] && s= || s=s
+      mnum=${#num_messages}
+      [ ${#list[@]} -gt 0 ] && printf " %${mnum}d message$s filtered by %s\n" \
+                   ${#list[@]} "$file" >> "$summary_file"
+      [ -n "${list[*]}" ] && mv $mvopt "${list[@]}" "deleted"
+
+      for mnum in "${list[@]}"
+      do
+        popcmd dele $mnum
+      done
+      write_log "${list[@]}"
+    done
+}
+
+retr()
+{
+    local msg_num=${1:-$msg_num}
+    verbose=0 popcmd retr $msg_num  || return 7
+    {
+        printf "From %s %s %s %2d %02d:%02d:%02d %d\n" \
+            "${from_addr[$msg_num]:-xxx@yyy.zzz}" \
+            $DayOfWeek $MonthAbbrev ${DAY#0} \
+            ${HOUR#0} ${MINUTE#0} ${SECOND#0} $YEAR
+        popread <&3
+        printf "\n"
+    } | deliver
+}
+
+retrieve() ## retrieve mail from POP3 server
+{
+    local retrieved=0
+    local msg_num=0
+    local list
+    local type=R
+    cle=$'\e[K'
+    cd "$header_dir" || return 5
+    set -- allowed/[0-9]*
+    [ -f "$1" ] && mv $mvopt allowed/* .
+    rmdir allowed
+    while [ $(( msg_num += 1 )) -le $num_messages ]
+    do
+       [ -f $msg_num ]  || continue
+       case $msg_num in *[^0-9]*) continue ;; esac
+       [ -t 1 ] && printf " %${#num_messages}d %s${cle}\r" \
+                                   $msg_num "$addr" >/dev/tty
+       retr
+       list[$msg_num]=$msg_num
+       [ ${delete_retrieved:-0} -ge 1 ] && verbose=0 popcmd dele $msg_num
+       retrieved=$(( $retrieved + 1 ))
+    done
+    write_log ${list[*]}
+    printf " %${#num_messages}d messages retrieved\n" \
+                                     $retrieved >> "$summary_file"
+}
+
+write_log()
+{
+    local file=${file##*_}
+    local filter
+    for msg
+    do
+      filter=${msg_filter[$msg]:-${file:-.}}
+      filter=${filter##*[_/]}
+      printf "%s\t%${#num_messages}d\t%s\t" ${msg_status[$msg]:-$type} \
+           $msg "$filter"
+      printf "%s\t%s\t" "${who_from[$msg]//[$NL\"]/}" "${msg_size[$msg]}"
+      set -- ${msg_subject[$msg]//[$NL$CR]/ }
+      printf "%s\t%s\t%s\t%s\n" "$user" "$server" "${datestamp//./:}" "$*"
+    done >> "$log_file"
+}
+
+deliver() ## deliver message
+{
+    case $delivery in
+        mbox) cat "$@" >> ${mbox:-$HOME/mail/$user} ;;
+        maildir) ;; ## not yet implemented
+        *) procmail ;;
+    esac
+}
+
+xtr_addr()
+{
+    local IFS="${IFS}<>)($NL"
+    local msg_num=${1:-$msg_num}
+    for addr in ${msg_from[$msg_num]}
+    do
+      case $addr in
+          *@*) break ;;
+      esac
+    done
+    from_addr[$msg_num]=$addr
+    set -- ${msg_from[$msg_num]/"$addr"/}
+    IFS=$' \t\n'
+    set -- "$@"
+    who_from[$msg_num]=$*
+}
+
+cleanup()
+{
+    trap EXIT      ## Remove the trap
+    echo quit >&3  ## Disconnect from POP3 server
+
+    ## Tell me about it!
+    printf "Connection to $server/$port closed\n\n" >> "$summary_file"
+
+    ## If terminal parameters have been saved, restore them
+    [ -n "$_STTY" ] && stty "$_STTY"
+
+    ## If this function has been called with an argument, it is an error message
+    [ ${1:-0} -gt 0 ] && printf " Error $1\n" >&2
+
+    ## If there were no message, remove the directory
+    [ ${num_messages:-0} -eq 0 ] && kill_dir || compress_dir
+
+    ## Bye-bye!
+    exit $1
+}
+
+compress_dir() ##
+{
+    cd "${header_dir%/*}"
+    local tarfile=${header_dir##*/}.tgz
+    tar czf "$tarfile" "${header_dir##*/}"
+    kill_dir
+}
+
+kill_dir()
+{
+    rm -rf "${1:-$header_dir}"
+}
+
+expunge()
+{
+    local msg=1
+    local deleted=0
+
+    ## Loop through all the messages
+    while [ $msg -le $num_messages ]
+    do
+      ## If the message has been marked "deleted", do the dirty deed
+      case ${msg_status[$msg]} in
+          D) popcmd dele $msg
+             deleted=$(( $deleted + 1 ))
+             ;;
+      esac
+      msg=$(( $msg + 1 ))  ## Next message
+    done
+    if [ $deleted -gt 0 ]
+    then
+      echo quit >&3  ## Disconnect from POP3 server
+      unset msg_body msg_cc msg_date msg_filter msg_from msg_header msg_id
+      unset msg_reply msg_reply_to msg_sender msg_size msg_status msg_subject
+      unset msg_to msg_dlist
+    else
+      return 1
+    fi
+}

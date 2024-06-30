@@ -1,0 +1,8 @@
+## Use the script-setup configuration file
+configfile=$HOME/.config/script-setup.cfg
+
+## If the config file doesn't exist, run script-setup
+[ -f $configfile ] || script-setup || exit 5
+. $configfile
+
+grep "$@" $ScriptDir/*$devel_suffix

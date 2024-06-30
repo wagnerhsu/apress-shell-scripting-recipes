@@ -1,0 +1,56 @@
+escape_slash() {
+    string=$1
+    case ${BASH_VERSION%%.*} in
+        "") string= ;;
+        [2-9] | [1-9][0-9]) string=${string//\//\\/} ;;
+        *) string=`echo "$string" | sed 's|/|\\/|g'` ;;
+    esac
+}
+
+version="1.0"
+progname=${0##*/}
+delete_str=
+replace_str=
+search_str=
+test=0
+sed_cmd=
+
+while getopts vVh-:s:r:d:t var
+do
+  case $var in
+    d) search_str=.*$OPTARG.* ;;
+    r) replace_str=$OPTARG ;;
+    s) search_str=$OPTARG ;;
+    t) test=1 ;;
+    v) verbose=$(( $verbose + 1 )) ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+case $verbose in
+    2) set -v ;;
+    3) set -x ;;
+esac
+
+[ -n "$search_str" ] && {
+  escape_slash "$search_str"
+  search_str=$string
+  escape_slash "$replace_str"
+  sed_cmd="-e 's/$search_str/$string/g'"
+}
+
+[ -z "$sed_cmd" ] && { usage; exit 5; }
+
+tempfile=`mktemp $progname.XXXXXX` || exit 5
+for file
+do
+  eval "sed $sed_cmd \"$file\" > $tempfile"
+  if [ $test -ge 1 ]
+  then
+    printf "\n%s:\n" "$file"
+    diff "$file" "$tempfile" || printf "\n"
+  else
+    mv "$tempfile" "$file"
+  fi
+done
+[ -f "$tempfile" ] && rm "$tempfile"

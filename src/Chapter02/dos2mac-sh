@@ -1,0 +1,7 @@
+progname=${0##*/}
+tempfile=$(mktemp $progname.XXXXXX) || exit 5
+for file
+do
+   tr -d '\012' < "$file" > "$tempfile" &&
+   mv "$tempfile" "$file"
+done

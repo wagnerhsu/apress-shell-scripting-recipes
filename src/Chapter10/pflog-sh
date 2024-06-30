@@ -1,0 +1,6 @@
+datestamp=`date "$@" +%Y-%m-%d`
+pf_fields=${pf_fields:-1,3}
+log=`cut -f$pf_fields $HOME/.pfilter/logs/$datestamp.log`
+echo "$log" | sort | uniq -c | sort -rn
+echo
+echo "$log" | cut -f1 | sort | uniq -c | sort -rn

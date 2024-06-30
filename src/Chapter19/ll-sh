@@ -1,0 +1,12 @@
+IFS='
+'
+ls_opts=          ## Assign options as default behavior; I use "-lA"
+list=$(ls  $ls_opts "$@")
+set -- $list
+if [ $# -lt $LINES ]
+then
+  printf "%s\n" $list
+else
+  ## Your version of less may not have all these options, so adjust to taste
+  printf "%s\n" $list | ${PAGER:-less -egimQrXF}
+fi

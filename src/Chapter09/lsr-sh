@@ -1,0 +1,30 @@
+num=10         ## Default to ten most recent files
+short=0        ## Use long listing by default
+
+## Parse command-line options
+opts=an:o:s
+while getopts $opts opt
+do
+  case $opt in
+      a) ls_opts="$ls_opts -a" ;;
+      n) num=$OPTARG ;;
+      o) ls_opts="$ls_opts -r" ;;
+      s) short=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## Add -t  to ls options and -l if not using short mode
+case $short in
+    1) ls_opts="$ls_opts -t" ;;
+    *) ls_opts="$ls_opts -l -t" ;;
+esac
+ls $ls_opts "$@" | {
+    ## If the first line is "total ...", it is removed
+    read -r line
+    case $line in
+        total*) ;;
+        *) printf "%s\n" "$line" ;;
+    esac
+    cat
+} | head -$num

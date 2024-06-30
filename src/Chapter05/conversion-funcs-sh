@@ -1,0 +1,239 @@
+. math-funcs
+
+f2c()
+{
+    units="degrees Celsius"
+    prompt="Degrees Fahrenheit" arg "$@"
+    _f2c "$arg"
+    printf "%s%s\n" "$_F2C" "${units:+ $units}"
+}
+
+_f2c()
+{
+    eval "`echo $1 |
+            awk '{
+              printf "_F2C=%" pr "f\n", ($1 - 32) * 0.555556
+            }' pr=${precision:-.2}`"
+}
+
+
+f2k()
+{
+    prompt="Degrees Fahrenheit" arg "$@"
+    echo "$arg" |
+            awk '{
+              printf "%" pr "f\n", ($1 - 32) * 0.555556 + 273.15
+            }' pr=${precision:-.2}
+}
+
+_f2k()
+{
+    eval "`echo $1 |
+            awk '{
+              printf "_F2K=%" pr "f\n", ($1 - 32) * 0.555556 + 273.15
+            }' pr=${precision:-.2}`"
+}
+
+c2f()
+{
+    prompt="Degrees Celsius" arg "$@"
+    echo "$arg" |
+        awk '{
+               printf "%" pr "f\n", $1 * 1.8 + 32
+             }' pr=${precision:-.2}
+}
+
+_c2f()
+{
+    eval "`echo "$1" |
+             awk '{
+               printf "_C2F=%" pr "f\n", $1 * 1.8 + 32
+             }' pr=${precision:-.2}`"
+}
+
+
+k2f()
+{
+    units="degrees Fahrenheit"
+    prompt="Kelvins" arg "$@"
+    echo "$arg" |
+        awk '{
+               printf "%" pr "f%s\n", ($1 - 273.15) * 1.8 + 32, units
+             }' pr=${precision:-.2} units="${units:+ $units}"
+}
+
+_k2f()
+{
+    eval "`echo "$1" |
+             awk '{
+               printf "_K2F=%" pr "f\n", ($1 - 273.15) * 1.8 + 32
+             }' pr=${precision:-.2}`"
+}
+
+m2km()
+{
+    units=kilometers
+    prompt=Miles arg "$@"
+    _m2km "$arg"
+    printf "%s%s\n" "$_M2KM"  "${units:+ $units}"
+}
+
+_m2km()
+{
+    _fpmul "$1" 1.609344
+    _M2KM=$_FPMUL
+}
+
+km2m()
+{
+    units=miles
+    prompt=Kilometers arg "$@"
+    _fpmul "$arg" .62135
+    printf "%s%s\n" "$_FPMUL" "${units:+ $units}"
+}
+
+_km2m()
+{
+    _fpmul "$1" .62135
+    _KM2MILE=$_FPMUL
+}
+
+y2m()
+{
+    units=meters
+    prompt=Yards arg "$@"
+    _y2m "$arg"
+    printf "%s%s\n" "$_Y2M" "${units:+ $units}"
+}
+
+_y2m()
+{
+    _fpmul "$1" 0.914402
+    _Y2M=$_FPMUL
+}
+
+m2y()
+{
+    units=yards
+    prompt=Meters arg "$@"
+    _m2y "$arg"
+    printf "%s%s\n" "$_M2Y" "${units:+ $units}"
+}
+
+_m2y()
+{
+    _fpmul "$1" 1.09361
+   _M2Y=$_FPMUL
+}
+
+i2cm()
+{
+    units=centimeters
+    prompt=inches arg "$@"
+    _i2cm "$arg"
+    printf "%s%s\n" "$_I2CM" "${units:+ $units}"
+}
+
+_i2cm()
+{
+    _fpmul "$1" 2.54
+    _I2CM=$_FPMUL
+}
+
+i2mm()
+{
+    units=millimeters
+    prompt=inches arg "$@"
+    _i2mm "$arg"
+    printf "%s%s\n" "$_I2MM" "${units:+ $units}"
+}
+
+_i2mm()
+{
+    _fpmul "$1" 25.4
+    _I2MM=$_FPMUL
+}
+
+cm2i()
+{
+    units=inches
+    prompt=Centimeters arg "$@"
+    _cm2i "$arg"
+    printf "%s%s\n" "$_MM2I" "${units:+ $units}"
+}
+
+_cm2i()
+{
+   _fpmul "$1" .3937
+   _CM2I=$_FPMUL
+}
+
+mm2i()
+{
+    units=inches
+    prompt=Millimeters arg "$@"
+    _mm2i "$arg"
+    printf "%s%s\n" "$_MM2I" "${units:+ $units}"
+}
+
+_mm2i()
+{
+   _fpmul "$1" .03937
+   _MM2I=$_FPMUL
+}
+
+lb2kg()
+{
+    units=kilograms
+    prompt=Pounds arg "$@"
+    _lb2kg "$arg"
+    printf "%s%s\n" "$_LB2KG" "${units:+ $units}"
+}
+
+_lb2kg()
+{
+   _fpmul "$1" .4545
+   _LB2KG=$_FPMUL
+}
+
+kg2lb()
+{
+    units=pounds
+    prompt=Kilograms arg "$@"
+    _kg2lb "$arg"
+    printf "%s%s\n" "$_KG2LB" "${units:+ $units}"
+}
+
+_kg2lb()
+{
+    _fpmul "$1" 2.2
+    _KG2LB=$_FPMUL
+}
+
+oz2g()
+{
+    units=grams
+    prompt=Ounces arg "$@"
+    _oz2g "$arg"
+    printf "%s%s\n" "$_OZ2G" "${units:+ $units}"
+}
+
+_oz2g()
+{
+    _fpmul "$1" 28.35
+    _OZ2G=$_FPMUL
+}
+
+g2oz()
+{
+    units=ounces
+    prompt=Grams arg "$@"
+    _g2oz "$arg"
+    printf "%s%s\n" "$_G2OZ" "${units:+ $units}"
+}
+
+_g2oz()
+{
+    _fpmul "$1" 0.0353
+    _G2OZ=$_FPMUL
+}

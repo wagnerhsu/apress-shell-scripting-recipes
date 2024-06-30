@@ -1,0 +1,30 @@
+b=1  ## No. of lines to remove from beginning
+e=1  ## No. of lines to remove from end
+
+## Parse command-line options
+while getopts b:e: opt
+do
+  case $opt in
+      b) b=$OPTARG ;;  ## Number of lines to remove from beginning
+      e) e=$OPTARG ;;  ## Number of lines to remove from end
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+case $b$e in   ## check for non-numeric characters in $b and $e
+    *[!0-9]*) exit 5 ;;
+esac
+
+if [ $e -eq 0 ]
+then
+  sed "1,${b}d" "$@"  ## just remove from the top
+else
+  ## The buf[] array is a rotating buffer which contains the last N lines
+  ## where N is the number of lines to be removed from the bottom of the file
+  ## Printing starts when the line number is equal to the sum of the number
+  ## of lines to be removed from top and bottom, and continues to the end
+  ## of the file; the earliest line in the buffer is printed.
+  ## The last N lines will not be printed.
+  awk 'NR > b + e { print buf[ NR % e ] }
+                  { buf[ NR % e ] = $0 }' b=$b e=$e "$@"
+fi

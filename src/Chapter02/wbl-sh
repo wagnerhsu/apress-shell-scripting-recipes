@@ -1,0 +1,22 @@
+range=[a-z][A-Z]
+opts=
+while getopts ufrR: var
+do
+  case $var in
+      u) opts="$opts -u" ;;
+      f) opts="$opts -f" ;;
+      r) opts="$opts -r" ;;
+      R) range=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## convert any character that is not a letter to a newline
+out=$(cat ${1+"$@"} | tr -cs "$range" "[\012*]")
+
+## print all the words flush right across 99 columns
+out=$(printf "%99s\n" $out | sort $opts)
+
+## print all the words without the leading spaces
+printf "%s\n" $out
+

@@ -1,0 +1,10 @@
+
+[ $# -lt 2 ] && exit 1    ## Check that there are at least two arguments
+box=$1                    ## Enclosing character or string
+contents=$2               ## Character or string to be inserted
+shift 2                   ## Remove first two positional parameters
+
+## Two commands are necessary; the first will convert (for example)
+## "||||" to "|X||X|", and the second will take care of any remaining doubles
+sed -e "s/$box$box/$box$contents$box/g" \
+    -e "s/$box$box/$box$contents$box/g" "$@"

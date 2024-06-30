@@ -1,0 +1,74 @@
+## default values
+n=4          ## number of files to keep
+dest=        ## if a directory is specified, move the files
+compress=    ## compress files that have been moved
+old=         ## if set to -r, keep oldest files
+
+## Usually, NL (newline) is defined by sourcing standard-vars,
+## but since only one variable is needed, I have put the definition
+## in-line
+NL='
+'
+
+## parse command-line options
+opts=cC:d:n:o
+while getopts $opts opt
+do
+  case $opt in
+      c) compress=gzip ;;  ## use the default command, gzip
+      C) compress=${OPTARG:-bzip2}
+         ## If the command (without options) doesn't exist,
+          ## exit with error code 6
+         type ${compress%% *} >/dev/null || exit 6
+         ;;
+      d) dest=$OPTARG
+         [ -d "$dest" ] || ## check that the directory exists
+          mkdir "$dest" || ## if it doesn't, create it
+                exit 5     ## if that fails, exit with an error
+         ;;
+      n) case $OPTARG in
+             ## exit with error if OPTARG contains
+             ## anything other than a positive integer
+             *[!0-9]*) exit 4 ;;
+         esac
+         n=$OPTARG
+         ;;
+      o) old=-r ;;  ## keep oldest files, not newest
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## We assume that an error has been made if no files are to be
+## kept, since a script is not necessary for that (rm is enough)
+## If you want the option to remove all files, comment out the
+## following line.
+[ $n -eq 0 ] && exit 5
+
+## Store the list of files in a variable.
+filelist=`ls $old -t "$@" | sed -e "1,${n}d"`
+
+## By setting the internal field separator to a newline, spaces in
+## $filelist will be treated as part of the filename, not as a
+## space between diffrerent names
+## Note: this script will fail if any filenames contain a newline
+## character (they shouldn't).
+IFS=$NL
+
+case $dest in
+  "") ## no destination directory is given, so delete the files
+      rm $filelist ;;
+  *) ## move files to another directory
+     mv $filelist "$dest"
+
+     ## if $compress is defined, cd to the destination directory
+     ## and compress each file
+     [ -z "$compress" ] || (
+         cd "$dest" || exit 3
+         for file in $filelist
+         do
+           $compress ${file##*/}
+         done
+     ) || exit
+     ;;
+esac
+

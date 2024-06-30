@@ -1,0 +1,7 @@
+awk '## Seed the random -number generator
+     BEGIN { srand() }
+
+     ## Put a random number in front of each line
+     { printf "%.0f\t%s\n", rand() * 99999, $0 }' "$@" |
+            sort -n | ## Sort the lines numerically
+            cut -f2-  ## Remove the random numbers

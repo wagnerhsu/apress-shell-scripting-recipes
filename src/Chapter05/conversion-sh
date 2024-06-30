@@ -1,0 +1,87 @@
+main_menu()
+{
+    menu="
+       =============================
+           Conversion functions
+       =============================
+
+        0. Exit
+        1. Lengths and distances
+        2. Weights
+        3. Temperature
+
+       =============================
+
+       Select [0-3]: "
+
+menu1 distances weights temperatures
+}
+
+distances()
+{
+   menu="
+       ==================================
+             Lengths and distances
+       ==================================
+
+        0. Exit
+        1. m2km - miles to kilometers
+        2. km2m - kilometers to miles
+        3. y2m  - yards to meters
+        4. m2y  - meters to yards
+        5. i2cm - inches to centimeters
+        6. cm2i - centimeters to inches
+        7. i2cm - inches to millimeters
+        8. mm2i - millimeters to inches
+
+       ==================================
+
+       Select [0-8]: "
+
+    pause_after=1 menu1 m2km km2m y2m m2y i2cm cm2i i2mm mm2i
+}
+
+weights()
+{
+   menu="
+       ===================================
+                    Weights
+       ===================================
+
+        0. Exit
+        1. lb2kg - pounds to kilograms
+        2. kg2lb - kilograms to pounds
+        3. oz2g  - ounces to grams
+        4. g2oz  - grams to ounces
+
+       ===================================
+
+       Select [0-4]: "
+
+    pause_after=1 menu1 lb2kg kg2lb oz2g g2oz
+
+}
+
+temperatures()
+{
+   menu="
+       =====================================
+                  Temperatures
+       =====================================
+
+        0. Exit
+        1. f2c  - Fahrenheit to Celsius
+        2. c2f  - Celsius to Fahrenheit
+        3. f2k  - Fahrenheit to kelvin
+        4. k2f  - kelvins to degrees Fahrenheit
+
+       =====================================
+
+       Select [0-4]: "
+
+    pause_after=1 menu1 f2c c2f f2k k2f
+}
+
+precision=.2
+main_menu
+printf "\n"

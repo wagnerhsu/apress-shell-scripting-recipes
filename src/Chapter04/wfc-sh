@@ -1,0 +1,28 @@
+description="Find words containing the pattern given on the command line"
+version="1.0"
+progname=${0##*/}
+compounds=
+opts=c
+
+while getopts $opts var
+do
+  case $var in
+   c) compounds=1 ;;
+   *) exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+. wf-funcs
+
+compounds=${compounds:+$dict/Compounds}
+pattern=$1
+
+{
+    cat $dict/singlewords
+    if [ -n "$compounds" ]
+    then
+        cut -f1 "$compounds"
+    fi
+} | grep -i ".$pattern." | sort -fu
+

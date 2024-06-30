@@ -1,0 +1,325 @@
+. standard-funcs$shx
+. screen-vars$shx
+
+set_attr()
+{
+    for _attr in "${@:-0}"
+    do
+      case $_attr in
+	   ## if argument is negative, remove the attribute
+          -"$bold") printf "$set_attr" "22" ;; ## 21 may not work
+          -[0-9]*) printf "$set_attr" "2${_attr#-}" ;;
+          ## positive number; add an attribute
+          [0-9]*|"") printf "$set_attr" "${1:-0}" ;;
+      esac
+    done
+}
+
+## set the foreground color
+set_fg()
+{
+    case $1 in
+        [0-7]) printf "$set_fg" "$1" ;;
+        -1|"") printf "$NA" ;;
+        *) return 5 ;;
+    esac
+}
+
+## set the background color
+set_bg()
+{
+    case $1 in
+        [0-7]) printf "$set_bg" "$1" ;;
+        -1|"") printf "$NA" ;;
+        *) return 5 ;;
+    esac
+}
+
+## set both foreground and background colors
+set_fgbg()
+{
+    case ${1:-X}${2:-X} in
+        X[0-7]) printf "$set_bg" "$1$2" ;;
+        [0-7]X) printf "$set_fg" "$1$2" ;;
+        [0-7][0-7]) printf "$set_fgbg" "$1" "$2" ;;
+        *-1*|"XX") printf "$NA" ;;
+        *) return 5 ;;
+    esac
+}
+
+cls()
+{
+    printf "${CLS:=$(clear)}"
+}
+
+cls() {
+    case $# in
+        0) ;;
+        1) set_bg $1 ;;
+        2) set_fgbg $2 $1 ;;
+        *) set_fgbg $2 $1
+           shift 2
+           set_attr "$@"
+           ;;
+    esac
+    printf "${CLS:=$(clear)}"
+}
+
+printat()
+{
+   printf "$cu_row_col" ${1:-1} ${2:-1}
+
+   ## remove the first two arguments
+   case ${2+X} in
+       X) shift 2 ;;
+   esac
+
+   ## print any remaining arguments
+   case "$*" in
+      *?*) printf "%s" "$*" ;;
+   esac
+}
+
+printat_wy60()
+{
+   printf "\e="
+   chr -n $(( 32 + ${1:-1} )) $(( 32 + ${2:-1} ))
+   case ${2+X} in
+       X) shift 2 ;;
+   esac
+   case "$*" in
+      *?*) printf "%s" "$*" ;;
+   esac
+}
+
+put_block()
+{
+    printf "$cu_save"  ## save cursor location
+    printf "%s$cu_NL" "$@"
+}
+
+put_block_at()
+{
+    printat $1 $2 "$cu_save"
+    shift 2
+    printf "%s$cu_NL" "$@"
+}
+
+get_size()
+{
+    set -- $(stty size 2>/dev/null)
+    COLUMNS=${2:-80}
+    LINES=${1:-24}
+    export COLUMNS LINES
+}
+
+_max_length()
+{
+    ## initialize _MAX_LENGTH with the length of the first argument
+    _MAX_LENGTH=${#1}
+    [ $# -eq 0 ] && return ## if no arguments, just return
+    shift    ## remove the first argument
+    for var  ## cycle through the remaining args
+    do
+      [ "${#var}" -gt "$_MAX_LENGTH" ] && _MAX_LENGTH=${#var}
+    done
+}
+
+max_length()
+{
+    _max_length "$@"
+     printf "%s\n" $_MAX_LENGTH
+}
+
+print_block_at()
+{
+    printat $1 $2 "$cu_save"
+    ## _BLOCK_PARMS stores values for clearing the area later
+    _BLOCK_PARMS="$1 $2"
+    shift 2
+    print_block "$@"
+}
+
+print_block()
+{
+    _max_length "$@"
+    [ $_MAX_LENGTH -gt $(( $COLUMNS - 2 )) ] &&
+          pb_w=$(( $COLUMNS - 2 )) || pb_w=$_MAX_LENGTH
+
+    ## printf re-uses its format string until
+    ## all the arguments are printed
+    printf " %-${pb_w#-}.${pb_w#-}s $cu_NL" " " "$@" " "
+
+    ## store paramters for use with the clear_area_at function
+    _BLOCK_PARMS="$_BLOCK_PARMS $(( $_MAX_LENGTH + 2 )) $(( $# + 2 ))"
+}
+
+vbar()
+{
+    printf "$cu_save"   ## save cursor position
+
+         ## If a string is given, repeat it until it is long enough to
+    ## fill the width of the bar
+    case $3 in
+        ?*) vb_char=$3
+            while [ ${#vb_char} -lt ${2:-1} ]
+            do
+              vb_char=$vb_char$vb_char$vb_char
+            done
+            ;;
+        *) vb_char=" " ;;
+    esac
+
+    ## A loop starts with vbar_ set to 0, and increments it until
+    ## the specified number of lines have been printed.
+    vbar_=0
+    while [ $vbar_ -lt ${1:-$LINES} ]
+    do
+      printf "%${2:-1}.${2:-1}s$cu_NL" "$vb_char"
+      vbar_=$(( $vbar_ + 1 ))
+    done
+}
+
+center() {
+    case $1 in
+         -[0-9]*) c_cols=${1#-}
+                  shift
+                  ;;
+         *) c_cols=${COLUMNS:-78} ;;
+    esac
+    string="$*"
+    c_len=$(( ( $c_cols - ${#string} ) / 2 +  ${#string}))
+    printf "%${c_len}.${c_len}s" "$*"
+}
+
+flush_right() {
+    case $1 in
+         -[0-9]*) fr_cols=${1#-}
+                  shift
+                  ;;
+         *) fr_cols=${COLUMNS:-78} ;;
+    esac
+    printf "%${fr_cols}.${fr_cols}s" "$*"
+}
+
+ruler()
+{
+    printat 1 1
+
+    ## build tens and units strings to print across the top of the screen
+    tens="         1         2         3         4         5         6         7"
+    tens="$tens         8         9         0"
+    tens=$tens$tens$tens
+    printf "%${COLUMNS:=80}.${COLUMNS:=80}s\n" "$tens"
+    vruler
+    printat 2 1
+    one2ten=1234567890
+    while [ ${#one2ten} -lt $COLUMNS ]
+    do
+      one2ten=$one2ten$one2ten$one2ten
+    done
+    printf "%-${COLUMNS}.${COLUMNS}s\n" "$one2ten"
+}
+
+vruler()
+{
+    n=$(( ${bar_line:-1} ))
+    printat 1 1 "$cu_save"
+    while [ $n -le $LINES ]
+    do
+      printf "%2s$cu_NL" $n
+      n=$(( $n + 1 ))
+    done
+}
+
+box_block_at()
+{
+    printat $1 $2
+    _BLOCK_PARMS="$1 $2"
+    shift 2
+    box_block "$@"
+}
+
+box_block()
+{
+  _max_length "$@"
+  [ $_MAX_LENGTH -gt $(( $COLUMNS - 4 )) ] &&
+        pb_w=$(( $COLUMNS - 4 )) || pb_w=$_MAX_LENGTH
+
+  ## use the maximum length of the arguments for width specification
+  pb_w=$pb_w.$pb_w
+
+  ## print the top line using the $bx_border attributes
+  printf "$cu_save$bx_border"
+  printf "  %-${pb_w}s  $cu_NL" " "
+
+  ## printf re-uses its format string till all the arguemnts are printed
+  printf "$bx_border $bx_body %-${pb_w}s $bx_border $cu_NL" " " "$@" " "
+  printf "$bx_border  %-${pb_w}s  $bx_body$cu_NL" " "
+
+  ## store parameters for use with clear_area_at
+  _BLOCK_PARMS="$_BLOCK_PARMS $(( $_MAX_LENGTH + 4 )) $(( $# + 4 ))"
+}
+
+clear_area()
+{
+    printf "$cu_save"                ## save cursor position
+    n=0                              ## set counter
+    while [ $n -le $2 ]              ## loop till counter ...
+    do                               ## reaches the value of $2
+      printf "%${1}.${1}s$cu_NL" " " ## print spaces to WIDTH
+      n=$(( $n + 1 ))                ## increment counter
+    done
+}
+
+clear_area_at()
+{
+    printat $1 $2      ## position cursor
+    clear_area $3 $4   ## clear the area
+}
+
+box_area_at()
+{
+    ## set the border style
+    printf "$bx_border"
+
+    ## clear the whole area with the border color
+    clear_area_at $1 $2 $3 $(( $4 - 1 ))
+
+    ## return to the top left corner,
+    ## one square down and one to the right
+    printat $(( $1 + 1 )) $(( $2 + 1 ))
+
+    ## set the interior style
+    printf "$bx_body"
+
+    ## clear a smaller area with the body color
+    clear_area $(( $3 - 2 )) $(( $4 - 3 ))
+}
+
+box_area()
+{
+    printf "$bx_border$cu_save"
+
+    ## print the top line with the border values
+    printf "%${1}.${1}s$cu_NL" " "
+
+    ## create a string to contain the border for each line
+    ba_border="$bx_border $bx_body"
+
+    ## calculate the width of the inside area
+    ba_w=$(( $1 - 2 ))
+
+    ## loop until we reach the bottom line
+    ba_=2
+    while [ $ba_ -lt $2 ]
+    do
+      ## print the border left and right on each line
+      printf "$ba_border%${ba_w}.${ba_w}s$ba_border$cu_NL"
+      ba_=$(( $ba_ + 1 ))
+    done
+
+    ## print the bottom line of the box
+    printf "$bx_border$cu_save"
+    printf "%${1}.${1}s$cu_NL" " "
+}

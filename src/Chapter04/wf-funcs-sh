@@ -1,0 +1,82 @@
+write_config()
+{
+    {
+        printf "\n%s\n" "## This file"
+        printf "configfile=\"%s\"\n" "$configfile"
+
+        printf "\n%s\n" "## Directory containing main word lists"
+        printf "dict=\"%s\"\n" "$dict"
+
+        printf "\n%s\n" "## Directory where user places word files"
+        printf "%s\n" "## (may be the same as \$dict)"
+        printf "userdict=\"%s\"\n\n" "$userdict"
+
+    } > "$configfile"
+}
+
+do_config()
+{
+    [ -d $HOME/.config ] || mkdir $HOME/.config || return 9
+    wf_cfg=${wf_cfg:-$HOME/.config/wordfinder.cfg}
+    [ -f "$wf_cfg" ] && . "$wf_cfg" || {
+
+        ## if stdin is not connected to a terminal,
+        ## check for the files and return success or failuure
+        [ -t 0 ] || {
+            [ -d /usr/share/dict ] && { dict=/usr/share/dict; return; }
+            [ -d /usr/local/dict ] && { dict=/usr/local/dict; return; }
+            return 2
+        }
+        printf "\n  %s: could not find config file, %s\n" "$progname" "$wf_cfg"
+        printf "  Do you wish to run the setup program now [Y/n]? "
+        get_key Q
+        case $Q in
+            ""|y|Y|"$NL") wf-setup ;;
+            *) printf "\n"; return 5 ;;
+        esac
+        . "$wf_cfg"
+    }
+}
+
+set_sysdict()
+{
+    ## The dict directory is normally in one of two places.
+    ## If either is found, it becomes the default directory
+    for sysdict in /usr/share/dict /usr/local/dict ""
+    do
+      [ -d "${sysdict}" ] && break
+    done
+
+    ## The user is asked to confirm the directory already found,
+    ## or choose a different one.
+    while :
+    do
+      printf "Enter name of directory for word lists${sysdict:+ ($sysdict)}: "
+      read d
+      if [ -n "$d" ] && [ -d "$d" ]
+      then
+        sysdict=$d
+        break
+      elif [ -z "$d" ]
+      then
+        break
+      else
+        printf "%s does not exist\n" "$d"
+      fi
+    done
+    echo "Main wordlist directory: $sysdict"
+}
+
+## The assignment to NL is not necessary if standard-vars has been sourced
+NL='
+'
+mkwsig()
+{
+    echo "$1" |                  ## The word is supplied on the command line
+      tr '[a-z]' '[A-Z]' |        ## Convert all letters to upper case
+        sed "s/./&\\$NL/g" | ## Put each letter on a separate line
+          sort |                     ## Sort the letters alphabetically
+            tr -d '\012'           ## Remove the newlines
+}
+
+

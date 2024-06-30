@@ -1,0 +1,55 @@
+## Load functions
+. standard-funcs  ## For is_num and other functions
+. rand-funcs
+
+## Defaults
+n=1
+first_year=1900
+last_year=2100
+
+## parse command-line options
+opts=n:y:Y:
+while getopts $opts opt
+do
+  case $opt in
+      n) is_num $OPTARG || exit 5
+         n=$OPTARG
+         ;;
+      y) is_num $OPTARG || exit 5
+         first_year=$OPTARG
+         ;;
+      Y) is_num $OPTARG || exit 5
+         last_year=$OPTARG
+         ;;
+      *) exit 5 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## Calculate the modulus for the year
+rd_mod=$(( $last_year - $first_year + 1 ))
+
+## Generate each date
+while [ $n -gt 0 ]
+do
+  random -rn3      ## Get 3 numbers in the range 0 to 32767
+  set -- $_RANDOM  ## Place them in the positional parameters
+
+  ## Calculate year and month
+  year=$(( $1 % ${rd_mod#-} + $first_year ))
+  month=$(( $2 % 12 + 1 ))
+
+  ## Find maximum number of days in month
+  ## (leap years are not acknowledged; see Notes)
+  set 31 28 31 30 31 30 31 31 30 31 30 31
+  eval max=\${$month}
+
+  ## Calculate day of month
+  day=$(( $3 % $max + 1 ))
+
+  ## Print date in ISO format
+  printf "%d-%02d-%02d\n" $year $month $day
+
+  ## Count down to 0
+  n=$(( $n - 1 ))
+done

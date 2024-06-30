@@ -1,0 +1,74 @@
+case $BASH_VERSION in
+    [2-9]* | [1-9][0-9]*) ## bash 2 or later
+       get_key()
+       {
+           read -sn1 -u0 ${1:-_KEY}
+       }
+       ;;
+    *) [ -t 0 ] && _STTY=`stty -g`
+       get_key()
+       {
+           [ -t 0 ] && stty -echo -icanon
+           _KEY=`dd bs=1 count=1 2>/dev/null </dev/tty`
+           [ -n "$1" ] && eval "$1=\"\$_KEY\""
+           [ -t 0 ] && stty "$_STTY"
+           [ -n "$_KEY" ]
+       }
+       ;;
+esac
+
+progname=${0##*/}  ## Extract name of script
+
+## Defaults
+interactive=0
+verbose=0
+
+## Parse command-line options
+opts=iv
+while getopts $opts var
+do
+  case $var in
+      i) interactive=1 ;;
+      v) verbose=$(( $verbose + 1 )) ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+##
+ls -l "$@" | grep "^l" |
+  while read perms links owner group size month day time file
+  do
+    link=${file#* -\> }
+    file=${file% -\> *}
+
+    ## If the link does not point to a file, skip it
+    [ -f "$link" ] || {
+        [ $verbose -ge 1 ] &&
+           printf "'%s' is not a file; skipping\n" "$link" >&2
+        continue
+    }
+    ok=1
+
+    ## In interactive mode, prompt the user for a decision
+    if [ $interactive -ge 1 ]
+    then
+      printf "Copy %s to %s (Y/n/q)? " "$link" "$file"
+      get_key </dev/tty
+      printf "\n"
+      case $_KEY in
+          y|Y|"") ok=1 ;;
+          q|Q) break ;;
+          *) ok=0 ;;
+      esac
+    fi
+
+    ## In batch mode, or when the user has given the green light,
+    ## delete the symlink and copy the file into its place.
+    if [ $ok -ge 1 ]
+    then
+      rm "$file" && [ $verbose -ge 1 ] && printf "Deleted: %s\n" "$file"
+      cp -p "$link" "$file" && [ $verbose -ge 1 ] &&
+                        printf " Copied: '%s' -> '%s'\n" "$link" "$file" ||
+                        touch "$file"
+    fi
+  done

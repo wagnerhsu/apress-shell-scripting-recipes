@@ -1,0 +1,166 @@
+log_it()
+{
+    case $1 in
+        ## If the first argument contains non-numeric characters
+        ## There is no error level, so use 0
+        *[!0-9]* | "")
+           li_level=0
+           datestamp=${datestamp:-$(date +%Y-%m-%d_%H.%M.%S)}
+           ;;
+
+        ## The first argument is a number, so use it as the error level
+        ## and shift it out of the way.
+        *) li_level=$1
+           shift
+           date_vars ##datestamp=$(date +%Y-%m-%d_%H.%M.%S)
+           ;;
+    esac
+
+    ## If there's no $log_file set, use a default
+    li_file=${log_file:-$HOME/.logs/messages}
+
+    li_fmt="%s\t%s\t%d\t%s\n" ## Format string for printf
+    case $* in
+        ## If there is no message on the comand line, read stdin
+        "") while IFS= read -r line
+            do
+              [ -z "$line" ] && continue
+              printf "$li_fmt" $datestamp "$progname" "$li_level" "$line"
+            done
+            ;;
+        *) printf "$li_fmt" $datestamp "$progname" "$li_level" "$*"
+                [ $verbose -ge $li_level ] && {
+                    eval "li_=\$li_$li_level"
+                    printf "%s: %s %s\n" "$progname" "$li_" "$*" >&2
+                }
+                ;;
+    esac >> $li_file
+}
+
+check_dirs()
+{
+    for chk_dir
+    do
+      [ -d "$chk_dir" ] || {
+          log_it $WARNING "\"$chk_dir\" does not exist"
+          mkdir -p "$chk_dir"
+          [ -d "$chk_dir" ] || {
+              log_it $ERROR "could not create \"$chk_dir\""
+              return 2
+          }
+          return 1  ## Return code of 1 indicates that directory was created
+      }
+    done
+    ## Successful completion (return code 0) indicates directories already existed
+}
+
+verbose=0
+progname=${0##*/}
+
+## The contents of $default_config can be printed directly to the config file
+default_config='
+config_dir=$HOME/.config
+prog_dir=$HOME/.$progname
+log_dir=$prog_dir/logs
+bu_age=-1
+compress="bzip2 -v"
+archive_suffix=.bz2
+archive_dir=$prog_dir/archives
+config_file=$config_dir/$progname.cfg
+dir_file=$config_dir/$progname.dirs
+log_file=$log_dir/$progname.log
+'
+
+## Execute the contents of $default_config in the current shell
+eval "$default_config"
+
+_bu_age=
+_dir_file=
+. string-funcs  ## Load string functions for _gsub
+date_vars       ## Set date and time variables (see Chapter 1)
+
+## Since check_dirs uses log_it, it cannot be used to check for
+## the directory that log_it uses. We use the function from
+## standard-funcs (which is sourced by string-funcs)
+checkdirs $log_dir
+
+## Parse command-line options
+while getopts d:vc:a: var
+do
+  case "$var" in
+      a) _bu_age=$OPTARG ;;  ## Maximum age in days of files to back up
+      c) config_file=$OPTARG ;;
+      d) _dir_file=$OPTARG ;; ## File containing list of directories to back up
+      v) verbose=$(( $verbose + 1 )) ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## If the configuration files exists, source it;
+## if not, create it with the default settings
+[ -f "$config_file" ] && . "$config_file" || {
+    log_it $WARNING "Configuration file, $config_file, not found"
+    echo "$default_config" > "$config_file"
+}
+
+check_dirs "${config_file%/*}" "${dir_file%/*}"
+case $? in
+    0) ;; ## all is well with the world; continue
+    1) ;; ## TO DO: add info or diagnostics
+    2) exit 2 ;; ## Bail out
+    *) : Here be tygers ;;
+esac
+
+## Create $dir_file with a default directory if it doesn't exist
+[ -f "$dir_file" ] || {
+
+    log_it $ERROR "Directory list file, $dir_file, not found"
+    default_dir=$HOME
+
+    ## This should be set up to allow entry of one or more directories
+    printf "Do you want to set %s as the default (Y/n): " "$default_dir"
+    get_key _KEY ## from standard-funcs, which is sourced by string-funcs
+    case $_KEY in
+        [yY]|"") printf "%s\n" "$default_dir" >> "$dir_file" ;;
+        *) exit 1 ;;
+    esac
+}
+
+## create archive files
+IFS=$NL
+archive_list=
+
+## set variables changed by command-line options
+[ -n "$_bu_age" ] && bu_age=$_bu_age
+[ -n "$_dir_file" ] && dir_file=$_dir_file
+
+## read list of directories to be backed-up from $dir_file
+while read dir
+do
+  case $dir in \#*) continue ;; esac
+
+  ## convert slashes (and spaces) to underscores for archive file name
+  _gsub "${dir%/}" '[/ ]' '_'
+  tar_file=$archive_dir/${_GSUB#_}.${datestamp:?}.$bu_age.tar
+
+  ## build list of modified files; skip to next directory if none
+  file_list=$(find ${dir%/}/ -type f -mtime $bu_age)
+  [ -z "$file_list" ] && { verbose=3 log_it "$dir: no new files"; continue; }
+
+  ## archive the files
+  log_it "Creating archive: $tar_file"
+  {
+      tar cvf $tar_file $file_list |
+             log_it -p "ARCHIVE=${tar_file##*/}$archive_suffix FILE=" $INFO
+  } 2>&1 | log_it
+
+  ## compress $tar_file with compression utility of choice
+  eval "${compress:-:} $tar_file 2>&1 | log_it $INFO"
+  archive_file=$tar_file$archive_suffix
+  [ -f "$archive_file" ] || log_it $ERROR "$archive_file not created"
+  archive_list=$archive_list$NL$archive_file
+
+done < "$dir_file"
+printf "ARCHIVE FILE: %s\n" $archive_list | log_it
+
+exit

@@ -1,0 +1,25 @@
+progname=${0##*/}
+column=1
+
+## Parse command-line options
+while getopts Vn: var
+do
+  case $var in
+    n) column=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+awk 'BEGIN {
+       ## awk variables are initialized to 0, so we need to
+       ## give min a value larger than anything is it likely to
+       ## encounter
+       min = 999999999999999999 }
+     {
+      ++x[$col]
+      if ( $col > max ) max = $col
+      if ( $col < min ) min = $col
+     }
+     END { print max - min }
+' col=$column ${1+"$@"}
+

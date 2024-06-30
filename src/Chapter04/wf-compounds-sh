@@ -1,0 +1,91 @@
+squish()
+{
+    phr=$1
+    lengths="("
+    lastleftlen=0
+    while :
+    do
+      case $phr in
+          ## remove apostrophes
+          *\'*) phr=${phr%%\'*}${phr#*\'} ;;
+
+          ## if any non-alphabetic characters still exist
+          *[!a-zA-Z]*)
+               ## remove non-alphabetic characters
+               ## and convert following letter to upper case
+               left=${phr%%[!a-zA-Z]*}
+               right=${phr#$left}
+               char=${right%${right#?}}
+               right=${right#?}
+               leftlen=$(( ${#left} - $lastleftlen ))
+               lastleftlen=${#left}
+               while :  ## remove consecutive non-alphabetic characters
+               do
+                 case ${right%${right#?}} in
+                     [!a-zA-Z]) right=${right#?} ;;
+                     *) break ;;
+                 esac
+               done
+
+               ## Build the lengths string, using either a comma or a hyphen
+               case $char in
+                   '-') lengths=$lengths$leftlen- ;;
+                   *) lengths=$lengths$leftlen, ;;
+               esac
+               _upr "$right"
+               phr=$left$_UPR${right#?}
+               ;;
+
+          ## All cleaned up; exit from the loop
+          *) break ;;
+      esac
+    done
+    lengths="${lengths}${#right})"
+}
+
+. wf-funcs
+
+## If the wfconfig command does not exist, create a dummy function
+type wfconfig >/dev/null 2>&1 || wfconfig() { noconfig=1; }
+
+verbose=0
+progname=${0##*/}
+file=compounds
+
+## parse command-line options
+while getopts vVf: var
+do
+  case $var in
+      f) file=$OPTARG ;;
+      v) verbose=$(( $verbose + 1 )) ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+[ -f "$file" ] || die 5 "$progname: $file not found"
+
+## if the verbose option is used, print a dot for every 1000 words processed
+case $verbose in
+    [1-9]*) dotty=`repeat ".." $(( 1000 / $verbose ))`
+            dot()
+            {
+                case $dot in
+                    "$dotty")
+                        dot=
+                        printf "." >&2
+                        ;;
+                    *) dot=$dot. ;;
+                esac
+            }
+            ;;
+    *) dot() { :; } ;;
+esac
+
+## Read each line of the file, call squish(), and print the results;
+## the output should be redirected to the compounds file
+while IFS= read -r line
+do
+  squish "$line"
+  printf "%s\t%s\t%s\n" "$phr" "$line" "$lengths"
+  dot
+done < $file

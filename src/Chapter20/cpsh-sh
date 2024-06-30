@@ -1,0 +1,74 @@
+install_script()
+{
+    filename=${1%$devel_suffix}               ## Command name, without suffix
+    filename=${filename##*/}                  ## Remove path; use file name alone
+    dest=$InstalDir/$filename$bin_suffix      ## Path to installed file
+    source=$ScriptDir/$filename$devel_suffix  ## Path to development file
+    _uniqfile $BackupDir/$filename            ## Increment backup filename
+    bak=$_UNIQFILE                            ## ... and store as $bak
+
+    ## Check that source file exists
+    [ -f "$source" ] || return 2
+
+    ## Create destination file to check permissions (if it doesn't already exist)
+    [ -f "$dest" ] || touch "$dest" || exit 5
+
+    if cmp "$source" "$dest" >/dev/null
+    then  ## The files are identical; do nothing
+      echo "$source and $dest are the same" >&2
+    else
+      ## Copy the production file to the backup directory
+      [ -s "$dest" ] && cp -p "$dest" "$bak"
+
+      ## Copy the development script to the production directory
+      cp -p "$source" "$dest"
+
+    fi
+}
+
+_uniqfile()
+{
+    _base=$1
+    _n=1
+    _zpad $_n ${VERSION_WIDTH}
+    _UNIQFILE=$_base-$_ZPAD
+    while [ -f "$_UNIQFILE" ] || [ -d "$_UNIQFILE" ]
+    do
+      _zpad $_n ${VERSION_WIDTH}
+      _UNIQFILE=$_base-$_ZPAD
+      _n=$(( $_n + 1 ))
+    done
+}
+
+progname=${0##*/}
+. standard-funcs  ## load standard functions
+
+## Use the script-setup configuration file
+configfile=$HOME/.config/script-setup.cfg
+
+## If the configuration file doesn't exist, run script-setup
+[ -f $configfile ] || script-setup || exit 5
+
+## Source configuration file
+. $configfile
+
+## Parse command-line options
+while getopts c: arg; do
+    case $arg in
+        c) configfile=$OPTARG
+           [ -f "$configfile" ] && . "$configfile"
+           ;;
+        *) exit 1 ;;
+    esac
+done
+shift $(( $OPTIND - 1 ))
+
+## This is only necessary when a hand-rolled config file is used
+checkdirs $HOME/.config $ScriptDir $BinDir $BackupDir ||
+           die $? "Could not create $dir"
+
+## Install all commands given on the command line
+for script
+do
+   install_script "$script"
+done

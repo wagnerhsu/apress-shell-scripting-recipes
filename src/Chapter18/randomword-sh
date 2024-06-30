@@ -1,0 +1,132 @@
+_randletter() {
+    [ -z "$1" ] && set -- $upper $lower $digits
+    eval "_RANDLETTER=\${$(( $RANDOM % $# + 1 ))}"
+}
+
+interspace()
+{
+    echo  $* | sed 's/./& /g'
+}
+
+_randword()
+{
+   rw_len=${1:-8}                     ## Default to 8 characters
+   _RANDWORD=                         ## Clear the variable
+
+   ## Build the string with characters chosen by _randletter
+   while [ ${#_RANDWORD} -lt $rw_len ]
+   do
+     _randletter ${charset:-$upper$lower$digits}
+     _RANDWORD=$_RANDWORD$_RANDLETTER
+   done
+}
+
+_rand_word()
+{
+    ## Create format string if not specified
+    [ -z "$fmt" ] && charset=$format _randword ${1:-8}
+    rp_fmt=${fmt:-$_RANDWORD}
+    _RAND_WORD=
+    set -f    ## Disable filename expansion
+    while [ ${#rp_fmt} -gt 0 ]
+    do
+      rp_=${rp_fmt#?}       ## Remove first character from format string
+      rp_char=${rp_fmt%"$rp_"}  ## Get first character of format string
+      case $rp_char in  ## Get random letter from appropriate char. set
+          c) _randletter $consonants ;;  ## Lower case consonants
+          d) _randletter $digits ;;      ## Digits, 0 to 9
+          l) _randletter $lower ;;       ## Lower case letters, a..z
+          p) _randletter $punct ;;       ## Punctuation marks
+          P) _randletter $ppunct ;;      ## Portable filename punct.
+          u) _randletter $upper ;;       ## Upper case letters, A..Z
+          v) _randletter $vowels ;;      ## Lower case vowels
+          C) _randletter $CONSONANTS ;;  ## Upper case consonants
+          V) _randletter $VOWELS ;;      ## Upper case vowels
+         ## Use the next character literally, not as a class designation
+          \\) rp_fmt=$rp_
+              rp_=${rp_fmt#?}
+              rp_char=${rp_fmt%"$rp_"}
+             _RANDLETTER=$rp_char
+             ;;
+          *) _RANDLETTER=${rp_fmt%"$rp_"} ## Use the literal character
+              ;;
+      esac
+      _RAND_WORD=$_RAND_WORD$_RANDLETTER  ## Build word
+      rp_fmt=$rp_    ## Reset format string without first character
+    done
+    set +f   ## Turn filename expansion back on
+}
+
+rand_word()
+{
+    _rand_word "$@" && printf "%s\n" "$_RAND_WORD"
+}
+
+lower='a b c d e f g h i j k l m n o p q r s t u v w x y z '
+upper='A B C D E F G H I J K L M N O P Q R S T U V W X Y Z '
+digits='0 1 2 3 4 5 6 7 8 9 '
+punct='% # ! @ ? > } | \ = - _ ) ( + * & ^ $ <'
+ppunct=' . - _ '
+format='u l d u l p '  ## Superseded below; kept just in case.
+
+## These are to help make plausible words
+vowels='a e i o u '
+consonants='b c d f g h j k l m n p q r s t v w x y z '
+VOWELS='A E I O U '
+CONSONANTS='B C D F G H J K L M N P Q R S T V W X Y Z '
+format='u l d u l p v c V C '  ## Characters for format string
+
+## Defaults
+fmt=                       ## Format string
+num=1                      ## Number of words to generate
+length=                    ## Length of word
+len_lower=6                ## Lower range for length of word
+len_upper=9                ## Upper range for length of word
+charset=$lower_$upper_$digits_$punct ## Default characters
+
+## Parse command-line options
+opts=n:f:F:l:a:
+while getopts "$opts" opt
+do
+  case $opt in
+      ## classes of characters allowed
+      a) case $OPTARG in
+            *[!\ \	][!\ \	]*) format=$(interspace $OPTARG) ;;
+            *) format=$OPTARG ;;
+         esac
+         ;;
+
+      ## -l LL,UU  lower and upper no. of characters
+      l) len_lower=${OPTARG%[!0-9]*}
+         case $len_lower in *[!0-9]*) exit 5 ;; esac
+         len_upper=${OPTARG#*[!0-9]}
+         case $len_upper in *[!0-9]*) exit 5 ;; esac
+         [ $len_lower -gt $len_upper ] && {
+             len_lower=$len_upper
+             len_upper=${OPTARG%[!0-9]*}
+         }
+         ;;
+      ## number of words to generate
+      n) case $OPTARG in *[!0-9]*) exit 5 ;; esac
+         num=$OPTARG ;;
+
+      ## format string, e.g., -f ucClvVdpp
+      f) fmt=$OPTARG ;;
+
+      ## All words use same (random) format string of the given length
+      F) case $OPTARG in *[!0-9]*) exit 5 ;; esac
+         charset=$format _randword $OPTARG
+         fmt=$_RANDWORD
+         ;;
+  esac
+done
+
+## Generate requested number of words
+while [ $num -gt 0 ]
+do
+  [ $len_upper = $len_lower ] &&
+         length=$len_upper ||
+         length=$(( $RANDOM % ($len_upper - $len_lower) + $len_lower ))
+  rand_word $length
+  num=$(( $num - 1 ))
+done

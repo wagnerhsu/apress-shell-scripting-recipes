@@ -1,0 +1,11 @@
+if [ "$1" = "-s" ]  ## Check for option in first argument
+then
+    phlist=/var/data/phones  ## Use the system-wide list
+    shift                    ## Remove option from command line
+else
+    phlist=$HOME/.phones     ## Use personal list
+fi
+
+tmpfile=$HOME/phdel$$        ## Store modified file in temporary location
+grep -iv "$1" $phlist > $tmpfile ## Remove entry
+mv $tmpfile $phlist          ## Replace data file

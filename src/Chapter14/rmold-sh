@@ -1,0 +1,65 @@
+## Default values that can be changed with command-line options
+days=30                           ## age in days
+dir_file=$HOME/.config/rmold.dirs ## file containing list of dirs
+rm_opts=                          ## options to rm
+
+## Parse command-line options
+opts=c:d:im:v
+while getopts $opts opt
+do
+  case $opt in
+      c) dir_file=$OPTARG ;;
+      d) days=$OPTARG ;;
+      i) rm_opts="$rm_opts -i" ;;
+      m) move=1       ## move files instead of deleteing them
+         dest=$OPTARG ## directory to place files in
+
+         ## create $dest if it doesn't exist,
+         ## and exit with an error if it cannot be created
+         [ -d "$dest" ] || mkdir "$dest" || exit 5
+         ;;
+      v) rm_opts="$rm_opts -v" ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## if $dir_file contains a filename, check that it exists,
+case $dir_file in
+     -|"") dir_file= ;;
+     *) [ -f "$dir_file" ] || exit 5 ;;
+esac
+
+## if $dir_file exists, use it
+if [ -n "$dir_file" ]
+then
+  cat "$dir_file"
+
+## otherwise, if stdin is a terminal, prompt user for directory
+elif [ -t 0 ]
+then
+  printf "              Name of directory: " >&2
+  read dir
+  eval "dir=$dir"
+  [ -d "$dir" ] || exit 5
+  printf " Delete files older than (days): " >&2
+  read d
+  printf "%s %d\n" "$dir" "$d"
+else ## stdin is not a terminal, so pass input through unchanged
+  cat
+fi |
+ while IFS=' 	,' read dir days_ x
+ do
+   case $dir in
+       "") break ;;  ## skip blank lines
+       \#*) ;;       ## skip comments
+       *) ## last access time (-atime) is used rather than last
+          ## modification time
+          [ $move -eq 0 ] &&
+           find "$dir" -atime +${days_:-$days} -type f \
+                      -exec rm $rm_opts  {} \; </dev/tty ||
+           find "$dir" -atime +${days_:-$days} -type f \
+                      -exec mv $rm_opts {} "$dest" \; </dev/tty
+          ;;
+   esac
+ done
+

@@ -1,0 +1,2 @@
+ IFS=,
+ printf "%s\n" $* | grep -c "^f"

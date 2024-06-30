@@ -1,0 +1,66 @@
+#!/bin/bash
+
+## load functions
+. pop3-funcs
+
+## parse command line options
+while getopts c:v var
+do
+  case "$var" in
+      c) config_file=$OPTARG ;;
+      v) verbose=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## configure the current session
+config || exit 1
+
+## disconnect and perhaps do other chores when finished
+trap cleanup EXIT
+
+## create directory for headers
+set_dirs || cleanup 5
+
+printf "\n%s\n" "${datestamp//./:}" >> "$summary_file"
+
+## connect and log in
+connect || exit $?
+[ $verbose -ge 1 ] && printf "Connected to %s as %s\n" $server $user >&2
+
+## get number of messages from server
+popcmd stat || exit 4
+num_messages=${num:-0}
+[ $verbose -ge 1 ] && printf "Number of mesages on server: %d\n" $num_messages >&2
+case $num_messages in
+    1) printf " 1 message\n" ;;
+    *) printf " %${#num_messages}d messages\n"  $num_messages
+       [ $num_messages -eq 0 ] && exit ;;
+esac >> "$summary_file"
+
+getsizes || printf "%s\n" "Problem retrieving message sizes" >&2
+[ $verbose -ge 1 ] && printf "Retrieved message sizes\n" >&2
+
+[ $verbose -ge 1 ] && printf "Retrieving headers\n" >&2
+getheaders  || cleanup 6
+
+[ $verbose -ge 1 ] && printf "Headers retrieved\n" >&2
+
+[ $verbose -ge 1 ] && printf "Checking whitelist\n" >&2
+allow || cleanup 6
+
+filter || cleanup 7
+
+if [ ${retrieve_messages:-1} -ge 1 ]
+then
+  [ $verbose -ge 1 ] && printf "Retrieving messages\n" >&2
+  retrieve || cleanup 7
+fi
+
+popcmd stat || cleanup 8
+case $num in
+    1) printf " 1 message left on server\n" ;;
+    *) printf " %${#num}d messages left on server\n"  $num
+esac >> "$summary_file"
+[ $verbose -ge 1 ] && printf "Messages left on server: %s\n" "$num" >&2
+exit 0

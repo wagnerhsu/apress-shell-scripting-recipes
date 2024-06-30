@@ -1,0 +1,71 @@
+progname=${0##*/} ## this can usually replace `basename $0`
+
+## While under development, my scripts have names ending with "-sh"
+## These scripts call the development versions of function libraries
+## whose names also end in -sh. (The script development system, which copies
+##  the script to the bin directory and removes the suffix, is presented in
+## Chapter 20.)
+case $progname in
+    *-sh) shx=-sh ;;
+    *) shx= ;;
+esac
+
+##  filename-funcs[-sh] contains all the preceding functions
+. filename-funcs$shx
+
+
+## Set defaultsverbose=0
+recurse=0        ## Do not descend into directories
+ff_cmd=_pfname   ## Use POSIX filenames
+rpl_char=_       ## Replace bad characters with underscore
+pattern=*        ## All files in current directory
+nodoublechar=0   ## Do not squeeze double underscores
+f_only=0         ## Do not modify only directories
+d_only=0         ## Do not modify only files
+R_opt=           ## Clear options for recursive operation
+
+## Parse command-line options
+while getopts vRUVfdksuc:p: var
+do
+  case $var in
+      c) rpl_char=$OPTARG   ## replacement for underscore
+         R_opt="$R_opt -c '$rpl_char'" ;;
+      k) ff_cmd=_OKfname    ## use OK filenames rather than portable ones
+         R_opt="$R_opt -k" ;;
+      s) ff_cmd=_whitespc   ## just convert whitespace to underscores
+         R_opt="$R_opt -s" ;;
+      u) ff_cmd=_nodoublechar ## convert double underscores to single
+         R_opt="$R_opt -u" ;;
+      d) d_only=1            ## only process directories
+         R_opt="$R_opt -d" ;;
+      f) f_only=2            ## only process files
+         R_opt="$R_opt -f" ;;
+      p) pattern=$OPTARG     ## only change names matching $pattern
+         R_opt="$R_opt -p '$pattern'" ;;
+      U) nodoublechar=1      ##  convert __[...] to _ (with other fixes)
+         R_opt="$R_opt -U"
+         ;;
+      v) verbose=$(( $verbose + 1 )) ## print progress reports
+         R_opt="$R_opt -v"
+         ;;
+      R) recurse=1 ;;        ## descend directories recursively
+      V) printf "$progname: %s\n" $version; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## If there is a directory on the command line.....
+if [ -d "$1" ]
+then
+  for dir  ## ...enter it and any other directories in turn
+  do
+    (   [ -L "${dir%/}" ] && continue  ## do not descend symlinked directories
+        cd "$dir" || continue  ## Skip to next if dir not cd-able
+        fix_pwd  ## Do it
+        [ $recurse -eq 1 ] && is_dir ./*/ && eval "\"$0\" -R $R_opt  ./*/"
+    )
+  done
+else
+  fix_pwd
+  [ $recurse -eq 1 ] && is_dir ./*/ && eval "\"$0\" -R $R_opt  ./*/"
+fi

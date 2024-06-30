@@ -1,0 +1,16 @@
+progname=${0##*/}
+
+## Sort the list obtained from one or more files or the standard input
+sort -n ${1+"$@"} |
+  awk '{x[NR] = $1}    ## Store all the values in an array
+       END {
+         ## Find the middle number
+         num = int( (NR + 1) / 2 )
+
+         ## If there are an odd number of values
+         ## use the middle number
+         if ( NR % 2 == 1 ) print x[num]
+         ## otherwise average the two middle numbers
+         else  print (x[num] + x[num + 1]) / 2
+       }'
+

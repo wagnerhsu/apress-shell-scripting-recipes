@@ -1,0 +1,47 @@
+die() {
+    printf "%s: %s\n" "$progname" "$*" >&2
+    exit $1
+}
+
+NL='
+'
+version="1.0"
+progname=${0##*/}
+num=0
+flush_r=-
+err1="Numeric value required"
+
+while getopts Vn:w:W: var
+do
+  case $var in
+      n) case $OPTARG in
+           *[!0-9]*) die "$err1" ;;
+         esac
+         num=$OPTARG
+         ;;
+      w) case $OPTARG in
+           *[!0-9]*) die 1 "$err1" ;;
+         esac
+         width=$OPTARG ;;
+      W) case $OPTARG in
+           *[!0-9]*) die 1 "$err1" ;;
+         esac
+         width=$OPTARG
+         flush_r= ;;
+      V) printf "%s: %s\n" "$progname" "$version"; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+fmt=%${width:+$flush_r$width.$width}s
+n=0
+while [ $(( n += 1 )) -lt $num ]
+do
+  fmt="${fmt:+$fmt }%${width:+$flush_r$width.$width}s"
+done
+
+cat ${1+"$@"}  |
+  while read -r line
+  do
+    printf "${fmt:-%s}\n" ${line}
+  done

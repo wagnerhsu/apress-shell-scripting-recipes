@@ -1,0 +1,184 @@
+def_vars()
+{
+    pgy=11            ## vertical page size in inches
+    cols=2            ## number of labels across page
+    rows=5            ## number of labels top to bottom
+    pgleft=.75        ## space in inches from left of page to left edge of label
+    pgtop=.25         ## space in inches from top of page to top of label
+    labx=3.5          ## label width, in inches
+    laby=2            ## label height, in inches
+    labl=.25          ## space in inches from left edge of label
+    labt=.25          ## space in inches from top edge of label
+    font=Helvetica    ## Font
+    fontsize=18       ## Size in points
+    leading=20        ## Space between lines as percentage of font size
+    indent=0          ## Indent lines; indent=0 to turn off; increase to taste
+    fldsep="	        "     ## field separator, default is tab
+}
+
+parse_opts()
+{
+    ## Parse command-line options
+    ## All the options modify the default variables above.
+    while getopts gGf:c:r:l:t:x:y:m:M:F:S:L:i:P: var
+    do
+      case "$var" in
+          c) cols=$OPTARG ;;
+          r) rows=$OPTARG ;;
+          l) pgleft=$OPTARG ;;
+          t) pgtop=$OPTARG ;;
+          x) labx=$OPTARG ;;
+          y) laby=$OPTARG ;;
+          m) labl=$OPTARG ;;
+          M) labt=$OPTARG ;;
+          F) font=$OPTARG ;;
+          S) fontsize=$OPTARG ;;
+          L) leading=$OPTARG ;;
+          i) indent=$OPTARG ;;
+          f) fldsep=$OPTARG ;;
+          P) pgy=$OPTARG ;;
+          g) dogrid=1 ;;
+          G) dogrid=2 ;;
+      esac
+    done
+}
+
+prolog()
+{
+    printf "%s\n" "%!PS" ""\
+        "/bdef {bind def} bind def  %% Definitions to cut down on typing :)" \
+        "/ldef {load def} bdef" \
+        "/inch { 72 mul } bdef" \
+        "/gs /gsave ldef"       \
+        "/gr /grestore ldef"    \
+        "/m  /moveto ldef"      \
+        "/rm /rmoveto ldef"     \
+        "/l  /lineto ldef"      \
+        "/rl /rlineto ldef"     \
+        "" \
+        "%% Procedure to move to top left corner of each label" \
+        "/topleft { %% column row topleft"                      \
+        " laby mul neg pgy add pgtop sub leading add exch"      \
+        " labx mul pgleft add  exch"                            \
+        "    translate    %% Make the current point 0 0"        \
+        "    0 0 moveto"                                        \
+        "} def" \
+        "" \
+        "/F { findfont exch scalefont setfont } bdef" \
+        "/nl { lindent leading rmoveto } def" \
+        "%%EndProlog" ""
+}
+
+ps_vars()
+{
+    printf "%s\n" \
+         "/cols $cols def"          \
+         "/rows $rows def"          \
+         "/pgleft $pgleft inch def" \
+         "/pgtop $pgtop inch def"   \
+         "/pgy $pgy inch def"       \
+         "/labx $labx inch def"     \
+         "/laby $laby inch def"     \
+         "/font /$font def"         \
+         "/fontsize $fontsize def"  \
+         "/leading fontsize dup $leading mul 100 div add neg def" \
+         "/lindent ${indent:-0} leading neg mul def" \
+         "/labt $labt inch leading sub neg def"      \
+         "/labl $labl inch def"                      \
+         "fontsize font F"
+}
+
+do_grid()
+{
+      printf "%s\n" \
+         " gs                  %% Save the graphics state" \
+         "    /y 0 def         %% Define starting vertical co-ordinate" \
+         "    rows {           %% Loop for number of rows" \
+         "        /x 0 def     %% Horizontal co-ordinate is reset for each loop" \
+         "" \
+         "        cols {              %% Loop for number of columns" \
+         "            gs              %% Save the graphics state" \
+         "            x y topleft     %% Move to corner of label" \
+         "            0 laby neg rl   %% Draw a box" \
+         "            labx 0 rl" \
+         "            0 laby rl" \
+         "            closepath stroke" \
+         "" \
+         "            gr                %% Restore graphics state" \
+         "            /x x 1 add def    %% Increment x" \
+         "        } repeat" \
+         "        /y y 1 add def        %% Increment y" \
+         "    } repeat" \
+         "    gr                        %% Restore graphics state"
+}
+
+print_label()
+{
+   x=$(( $l % $cols ))             ## Calculate column from label number
+   y=$(( $l / $cols ))             ## Calculate row from label number
+
+   printf "%s\n" "gs" "  $x $y topleft" "  labl labt moveto"
+   set -- $line   ## Separate fields into positional parameters
+   for ln         ## ... and loop through them
+   do
+     case $ln in  ## Skip empty fields
+         ""|.) continue ;;
+     esac
+     case $ln in  ## Escape open parentheses
+         *\(*) _gsub "$ln" '\(' '\('
+               ln=$_GSUB ;;
+     esac
+     case $ln in  ## Escape close parentheses
+         *\)*) _gsub "$ln" ')' '\)'
+               ln=$_GSUB ;;
+     esac
+     echo "  gs ($ln) show gr nl" ## Print line and move down one line
+   done
+
+   printf "%s\n" "gr" "" ## Restore graphics state
+}
+
+progname=${0##*/}
+dogrid=0
+. string-funcs   ## Load string functions
+
+def_vars                   ## Define default settings
+parse_opts "$@"            ## Parse command-line otions
+shift $(( $OPTIND - 1 ))   ## Remove options
+
+prolog                     ## Print the PostScript prolog
+ps_vars                    ## Convert settings to PostScript variables
+
+if [ ${dogrid:-0} -gt 0 ]
+then  ## Print a grid to use as a guide
+  do_grid
+  ## If $do_grid is 2, print only the grid
+  [ $dogrid -eq 2 ] && exit
+fi
+
+n=0
+p=0
+
+IFS=${fldsep:-$TAB}
+
+## If there are files on the command line, use them as input,
+## otherwise use the standard input
+cat "$@" | {
+    ## Main loop reads input line by line
+    while read line
+    do
+      [ "$line" ] || continue         ## Ignore empty lines
+      l=$(( $n % ( $cols * $rows ) )) ## Number of current label on current page
+      if [ $l -eq 0 ]                 ## If it's back to 0, start new page
+      then
+        [ $p -ge 1 ] && printf "\nshowpage\n\n"
+        p=$(( $p + 1 ))
+      fi
+      print_label
+
+    n=$(( $n + 1 )) ## Count number of labels
+  done
+
+  ## Print a final showpage if necessary
+  [ $l -gt 0 ] && echo "showpage"
+}

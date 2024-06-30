@@ -1,0 +1,94 @@
+get_element()
+{
+    ## Read until the opening tag is found, and print the line
+    while read -r line
+    do
+      case $line in
+          *\<"$tag"*)
+               ## Line contains opening tag,
+               ## so remove any preceding text
+               line=${line#${line%<"$tag"*}}
+
+               case $line in
+                   *\</"${tag}"*)
+                       ## Line contains closing tag,
+                       ## so remove trailing text
+                       line=${line%${line#*</"$tag"*>}}
+
+                       ## print line and return from the function
+                       printf "%s " ${line} "${NL:=`printf "\n"`}"
+                       return
+                       ;;
+
+                   *)  ## No closing tag in this line,
+                       ## so print it and move on
+                       printf "%s " $line
+                       break
+                       ;;
+               esac
+      esac
+    done
+
+    ## Continue reading and printing lines
+    ## up to and including the closing tag
+    while read -r line
+    do
+      case $line in
+          *\</"${tag}"*)
+               ## Line contains closing tag so remove trailing text
+               line=${line%${line#*</"$tag"*>}}
+
+               ## print line and move on
+               printf "%s " ${line} "$NL"
+               break
+               ;;
+          *) printf "%s " ${line} ;; ## Line contains text; print it
+      esac
+    done
+}
+
+get_element_sed()
+{
+    split_tags "$@" |
+        sed -ne "/<$tag/,/<\/$tag/p" -e "/<\/$tag/q" | tr -d "$NL"
+    printf "\n"
+}
+
+split_tags()
+{
+  awk '/</ { gsub(/</, "\n<") }  ## Add a newline before "<"
+       />/ { gsub(/>/, ">\n") }  ## Add a newline after ">"
+           { gsub(/\n\n/, "\n")  ## remove double newlines
+             printf "%s ", $0 }  ## Print without trailing newline
+
+       ## Print final newline and remove multiple spaces
+       END { printf "\n" }' "$@" | tr -s ' '
+}
+
+html_title()
+{
+   NWSP="[!\\$SPC\\$TAB]"  ## Pattern to match non-space characters
+
+   ## The title tag may be in upper- or lower case, or capitalized,
+   ## therefore we try all three. Other mixtures of case are very rare
+   ## and can be ignored. If you need them, just add them to the list
+   for tag in title TITLE Title
+   do
+     set -f
+     get_element *< ${1:-/dev/tty} |     ## Extract the tag to a single line
+     {
+         read line
+         line=${line#*<"${tag}"*>}  ## Delete up to and including opening tag
+         line=${line%</"${tag}"*}   ## Delete from closing tag to end of line
+
+         case $line in               ## If the line still contains anything
+             *$NWSP*)                ## other than white space
+                 printf "%s " $line  ## print it, without multiple spaces,
+                 printf "\n"         ## and print a newline
+                 break
+                 ;;
+         esac
+      }
+   done
+}
+

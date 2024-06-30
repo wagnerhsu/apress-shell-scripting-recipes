@@ -1,0 +1,20 @@
+case $1 in
+    ## Add to the system list instead of your own list
+    -s) phlist=/var/data/phones
+        shift
+        ;;
+
+    ## Use file supplied on the command line
+    -f) phlist=$2
+        shift 2
+        ;;
+    -f*) phlist=${1#-f}
+         shift
+         ;;
+
+    ## Use personal list
+    *) phlist=$HOME/.phones
+esac
+
+## Append all non-option arguments to the file
+printf "%s\n" "$*" >> "$phlist"

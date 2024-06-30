@@ -1,0 +1,137 @@
+set_defaults()
+{
+    defaults="
+## Directory for development copy of script
+ScriptDir=${ScriptDir:-$HOME/scripts}
+
+## Directory for production copy of script
+InstalDir=${InstalDir:-$HOME/bin}
+
+## Directory for old versions of script
+BackupDir=${BackupDir:-$HOME/scripts/bak}
+
+## Directory for configuration files
+ConfigDir=${ConfigDir:-$HOME/.config}
+
+## Suffix for development version of script
+devel_suffix=-sh
+
+## Suffix for production version of script (by default, none)
+bin_suffix=
+
+## Back-up suffixes will be padded with zeroes to $VERSION_WIDTH
+VERSION_WIDTH=3
+
+## Verbose sets level of progress and error reporting
+verbose=0
+
+## Copyright statement
+copyright_blurb='
+    This is free software, released under the terms of the GNU General
+    Public License. There is NO warranty; not even for MERCHANTABILITY or
+    FITNESS FOR A PARTICULAR PURPOSE.'
+
+"
+    eval "$defaults"
+}
+
+write_config()
+{
+    set_defaults                               ## Expand variables
+    printf "%s\n" "$defaults" > $configfile    ## Write to config file
+}
+
+set_var()
+{
+    var=$1
+    prompt=$2
+    printf "\t%s: " "$prompt"
+    read _var
+    [ -n "$_var" ] && eval "$var=\"$_var\""
+}
+
+set_dirs()
+{
+    while :
+    do
+      set_defaults
+      dirx="Directory exists"
+
+      ## Check whether the directories already exist
+      [ -d "$ScriptDir" ] && sde="[$dirx]" || sde=
+      [ -d "$InstalDir" ] && bde="[$dirx]" || bde=
+      [ -d "$BackupDir" ] && kde="[$dirx]" || kde=
+
+      ## Print directory information
+      printf "\n\n%s\n" "$eq_bar"
+      printf "  %s\n" "Directories for Script Development"
+      printf "%s\n\n" "$eq_bar"
+      w=-25  ## Display width for directories
+      printf "  1. Script development: %${w}s%s\n" "$ScriptDir" "${sde}"
+      printf "  2.       Installation: %${w}s%s\n" "$InstalDir" "${bde}"
+      printf "  3.             Backup: %${w}s%s\n" "$BackupDir" "${kde}"
+      printf "\n%s\n\n" "$eq_bar"
+      printf "  %s: " "Select 1 to 3 to change directory or <ENTER> to accept"
+
+      read _var
+      case $_var in
+          "") break ;;
+          0|q) exit ;;
+          1) set_var ScriptDir "Script development directory"
+             mkdir -p "$ScriptDir" || printf "\a"
+             ;;
+          2) set_var InstalDir "Installation directory"
+             mkdir -p "$InstalDir" || printf "\a"
+             ;;
+          3) set_var BackupDir "Backup directory"
+             mkdir -p "$BackupDir" || printf "\a"
+             ;;
+      esac
+    done
+
+    ## Create directories that don't yet exist
+    for dir in  $ScriptDir $InstalDir $BackupDir
+    do
+      [ -d "$dir" ] && continue || mkdir -p "$dir" || exit 1
+    done
+}
+
+set_suffixes()
+{
+    while :
+    do
+      printf "\n\n%s\n" "$eq_bar"
+      printf "  %s\n" "Suffixes"
+      printf "%s\n\n" "$eq_bar"
+      printf "  1. Development suffix: %s\n" "$devel_suffix"
+      printf "  2.   Installed suffix: %s\n" "$bin_suffix"
+      printf "  3.     Backup padding: %s%s\n" "$VERSION_WIDTH"
+      printf "\n%s\n\n" "$eq_bar"
+      printf "  %s: " "Select 1 to 3 to change suffix or <ENTER> to accept"
+      read _var
+      echo
+      case $_var in
+          "") break ;;
+          0|q) exit ;;
+          1) set_var devel_suffix "Development suffix" ;;
+          2) set_var bin_suffix "Installed suffix" ;;
+          3) set_var VERSION_WIDTH "Backup padding" ;;
+      esac
+    done
+}
+
+### Removed to allow script to run in a Bourne shell
+## progname=${0##*/} ## Extract filename of script from $0
+
+## Decorative line
+eq_bar==========================================================================
+configfile=$HOME/.config/script-setup.cfg ## Configuration file
+
+set_defaults  ## Populate default variables
+[ -f "$configfile" ] && . "$configfile" ## Load configuration if file exists
+
+set_dirs       ## Get directory names from user
+set_suffixes   ## Get suffixes from user
+write_config   ## Write the settings to the configuration file
+printf "\n\n"  ## Keep things tidy (since there are no newlines after prompts)
+

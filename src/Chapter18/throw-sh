@@ -1,0 +1,18 @@
+. rand-funcs    ## Load random functions
+
+sides=6         ## Number of sides on the dice
+sep='\n'        ## String to place between numbers
+num=${1:-1}     ## Default to 1 throw if no number on command line
+
+## Generate all the random numbers
+random -r -l 1 -u $sides -n $(( $num * 2 ))
+
+## Place numbers in the positional parameters
+set -- $_RANDOM
+
+while [ $# -gt 0 ]
+do
+  printf "%s$sep"  $(( $1 + $2 ))  ## Print sum of first two numbers
+  shift 2                          ## Remove two numbers
+done
+

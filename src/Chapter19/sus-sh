@@ -1,0 +1,31 @@
+. standard-funcs  ## load functions from library in Chapter 1
+dump=0
+
+while getopts d opt
+do
+  case $opt in
+      d) dump=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+sus_ldir=$HOME/work/sus          ## Directory for storing HTML pages
+[ -d "$sus_ldir" ] ||            ## If directory doesn't exist
+mkdir -p "$sus_ldir" || exit 3   ## create it
+html_file=$sus_ldir/$1.html      ## Path to stored HTML file
+
+## Location of man pages on Open Group web site
+sus_dir=http://www.opengroup.org/onlinepubs/007904975/utilities
+
+## If the file doesn't exist locally, download it
+[ -f "$html_file" ] || wget -O $html_file $sus_dir/$1.html > /dev/null 2>&1
+
+case $dump in
+    1) ## Dump file with lynx
+       lynx -dump -nolist $html_file | ${PAGER:-less}
+       ;;
+    *) ## View file with lynx
+       lynx $html_file
+       ;;
+esac
+

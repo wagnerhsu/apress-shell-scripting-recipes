@@ -1,0 +1,129 @@
+_last_month()
+{
+    lm_day=0$_DAY
+    lm_month=$_MONTH
+    lm_year=$YEAR
+    case $_MONTH in
+       ## If its January, use December of the previous year
+        1) lm_year=$(( $lm_year - 1 ))
+           lm_month=12
+           ;;
+        ## otherwise just subtract one from the month
+        *) lm_year=$YEAR
+           lm_month=0$(( $lm_month - 1 ))
+           ;;
+    esac
+
+    ## Check that the day is no greater than the days in last month
+    ## and set to last day of the month if it is
+    if [ "${lm_day#0}" -gt 28 ]
+    then
+      _days_in_month $lm_month $lm_year
+      [ "${lm_day#0}" -gt "$_DAYS_IN_MONTH" ] && lm_day=$_DAYS_IN_MONTH
+    fi
+    _LAST_MONTH=$lm_year-${lm_month#${lm_month%??}}-${lm_day#${lm_day%??}}
+}
+
+cmp_df()
+{
+    [ -f "$1" ] && [ -f "$2" ] &&
+    join -t "$TAB" $1 $2 |
+        while read fs today yesterday
+        do
+          notify=0
+          [ $today -eq $yesterday ] && continue
+
+          diff=$(( $today - $yesterday ))
+          if [ $today -ge $high_point ]
+          then
+            [ ${diff#-} -ge $high_diff ] && notify=1
+          elif [ ${diff#-} -ge $min_diff ]
+          then
+            notify=1
+          fi
+          if [ $notify -gt 0 ]
+          then
+            printf "%20s   %9d%% %7d%%     (%d)\n" $fs $today $yesterday $diff
+          fi
+        done
+}
+
+progname=${0##*/}  ## Extract the name of the script
+case $progname in
+    -sh) shx=-sh ;;
+    *) shx= ;;
+esac
+
+. date-funcs$shx
+
+df_dir=/var/log/df
+[ -d "$df_dir" ] || mkdir "$df_dir" ||
+die 5 "Could not create directory, $df_dir"
+
+## Defaults, may be overridden by config file or options
+min_diff=10       ## level of change needed to generate report
+high_diff=1       ## level of change to report when disk is nearly full
+high_point=90     ## level at which $high_diff is used instead of $min_diff
+configfile=$HOME/.config/dfcmp.cfg ## default config file
+mkfile=0          ## do not re-create todays file if it already exists
+
+## Parse command-line options
+while getopts fc:d:h:p: var
+do
+ case $var in
+     c) configfile=$OPTARG ;;
+     d) min_diff=$OPTARG ;;
+     h) high_diff=$OPTARG ;;
+     p) high_point=$OPTARG ;;
+     f) mkfile=1 ;; ## force creation of todays file
+ esac
+done
+shift $(( $OPTIND - 1 ))
+
+## check for config file, and source it if it exists
+[ -f "$configfile" ] && . "$configfile"
+
+## set todays date variables
+date_vars
+
+## set file names
+df_file=$df_dir/df_$TODAY
+_yesterday $TODAY
+df_yesterfile=$df_dir/df_$_YESTERDAY      ## yesterday
+_dateshift $TODAY -7 || die 2
+df_lastweekfile=$df_dir/df_$_DATESHIFT    ## last week
+_last_month || die 2
+df_lastmonthfile=$df_dir/df_$_LAST_MONTH  ## last month
+
+## create todays file if it doesnt exist (or if -f is selected)
+[ -f "$df_file" ] || mkfile=1
+[ $mkfile -eq 1 ] &&
+  df | { read  ## discard header
+      while read fs b u a pc m
+      do
+
+        case $fs in
+            ## skip samba and NFS mounts, proc, etc.
+            //*|*:*) continue ;;
+            */*) ;; ## regular file system
+            *) continue ;; ## unknown; skip it
+        esac
+
+        ## when line is split due to long filesystem name, read next line
+        case $b in "") read b u a pc m ;; esac
+        printf "%s\t%d\n" $m "${pc%\%}"
+      done
+  } | sort > "$df_file"
+
+## Compare today's file with each of the three old files
+set YESTERDAY "1 WEEK AGO"  "1 MONTH AGO"
+for file in $df_yesterfile $df_lastweekfile $df_lastmonthfile
+do
+  result=`cmp_df $df_file $file`
+  if [ -n "$result" ]
+  then
+    printf "%20s    %10s  %10s  %s\n" FILESYSTEM TODAY "$1" DIFF
+    printf "%s\n" "$result"
+  fi
+  shift
+done

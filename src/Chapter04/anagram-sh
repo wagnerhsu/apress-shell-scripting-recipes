@@ -1,0 +1,23 @@
+description="Find words that are anagrams of WORD on command line"
+version="1.0"
+progname=${0##*/}
+compounds=
+
+. wf-funcs
+
+while getopts Vc var
+do
+  case $var in
+      c) compounds=1 ;;
+      V) printf "%s: %s\n" $progname $version; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+do_config || exit 5
+
+pattern=`mkwsig $1`
+compounds=${compounds:+$dict/Compounds.anag}
+
+grep -i "^$pattern$TAB" $dict/singlewords.anag $compounds |
+   cut -f2 | sort -fu

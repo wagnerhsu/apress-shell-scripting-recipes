@@ -1,0 +1,222 @@
+. standard-funcs
+
+## KornShell93
+_fpmul()
+{
+    _FPMUL=1
+    for fp_n
+    do
+      _FPMUL=$(( $_FPMUL * $fp_n ))
+    done
+}
+
+_fpmul()
+{
+    fp_places=
+    fp_tot=1
+    fp_qm=
+    fp_neg=
+    _FPMUL=
+    for fp_n
+    do
+      ## 2 negatives make a positive, i.e., each negative number changes the sign
+      case $fp_n in
+          -*) [ "$fp_neg" = '-' ] && fp_neg= || fp_neg='-'
+              fp_n=${fp_n#-}
+              ;;
+      esac
+
+      ## Check for non-numeric characters
+      case $fp_n in
+          ## (minus signs have been removed by this point,
+          ## so we don't need to include them)
+          *[!0-9.]*) return 1 ;;
+## Use this in place of the line above if you prefer to ignore (i.e., skip over)
+## invalid arguments
+##          *[!0-9.]*) continue ;;
+      esac
+
+      ## count the number of decimal places,
+      ## then remove the decimal point and multiply
+      case $fp_n in
+          .*) fp_int=
+              fp_dec=${fp_n#?}
+              fp_places=$fp_places$fp_dec
+              fp_n=$fp_dec
+                      ;;
+          *.*) fp_dec=${fp_n#*.}
+               fp_int=${fp_n%.*}
+               fp_places=$fp_places$fp_dec
+               fp_n=$fp_int$fp_dec
+               ;;
+      esac
+
+      ## remove leading zeroes
+      while :
+      do
+        case $fp_n in
+            0*) fp_n=${fp_n#0} ;;
+            *) break;;
+        esac
+      done
+
+      ## "Show your work to the teacher" if verbose equals 63
+      [ ${verbose:-0} -eq 63 ]  && printf "%s\n" "total=\$(( $fp_tot * $fp_n ))"
+
+      ## multiply by the previous total
+      fp_tot=$(( $fp_tot * $fp_n ))
+
+      ## report any overflow error
+      case $fp_tot in
+          -*) printf "fpmul: overflow error: %s\n" "$fp_tot" >&2
+              return 1
+              ;;
+      esac
+    done
+
+    [ ${verbose:-0} -eq 63 ]  && printf "%s\n" "total=$fp_tot"
+
+   ## pad the result with leading zeroes if necessary
+    while [ ${#fp_tot} -lt ${#fp_places} ]
+    do
+      fp_tot=0$fp_tot
+    done
+
+    fp_df=
+    while [ ${#fp_df} -lt ${#fp_places} ]
+    do
+      left=${fp_tot%?}
+      fp_df=${fp_tot#$left}$fp_df
+      fp_tot=$left
+    done
+    _FPMUL=$fp_tot${fp_df:+.$fp_df}
+
+    ## remove trailing zeroes or decimal points
+    while :
+    do
+      case $_FPMUL in
+          *.*[0\ ]|*.) _FPMUL=${_FPMUL%?} ;;
+          .*)  _FPMUL=0$_FPMUL ;;
+          *) break ;;
+      esac
+    done
+}
+
+fpmul()
+{
+    _fpmul "$@" || return 1
+    printf "%s\n" "$_FPMUL"
+}
+
+_int()
+{
+    _INT=${1%%.*}
+}
+
+int()
+{
+    printf "%d\n" "${1%%.*}"
+}
+
+_round()
+{
+    _ROUND=${1%%.*}   ## extract the integer
+    case ${1#*.} in
+       ## If the decimal begins with any digit from five to 9,
+       ## the result is rounded up
+        [5-9]*) _ROUND=$(( $_ROUND + 1 )) ;;
+    esac
+}
+
+round()
+{
+    _round "$1"
+    printf "%s\n" $_ROUND
+}
+
+_pow()
+{
+    exp=$2
+    pow_arg=
+
+    case $exp in
+        ## If the exponent contains a decimal,
+        ## we'll wimp out and let awk handle it
+        *.*) _POW=$(awk "BEGIN { printf \"%f\", $1 ** $2 ; exit }")
+             return ;;
+        ## For second and third powers, we pass the calculation to the more
+        ##  efficient functions defined below
+        2) _square "$@"
+           _POW=$_SQUARE
+           return
+           ;;
+        3) _cube "$@"
+           _POW=$_CUBE
+           return
+           ;;
+    esac
+
+    ## If the base contains no decimal point, we can use shell arithmetic
+    case $1 in
+        *.*) pow_op= ;;
+          *) pow_op=" * " ;;
+    esac
+
+    ## Build the string that will be used in $(( ... ))
+    ## or as the arguments to _fpmul
+    while [ $exp -gt 0 ]
+    do
+      pow_arg="${pow_arg:+$pow_arg $pow_op} $1"
+      exp=$(( $exp - 1 ))
+    done
+    case $pow_arg in
+        *.*) _fpmul $pow_arg   ## Decimal points found
+             _POW=$_FPMUL
+             ;;
+          *) _POW=$(( $pow_arg )) ;;
+    esac
+}
+
+pow()
+{
+    _pow "$@" && printf "%s\n" "$_POW"
+}
+
+_square()
+{
+    case $1 in
+        *.*) _fpmul $1 $1            ## the base contains a decimal point
+             _SQUARE=$_FPMUL
+             ;;
+        *) _SQUARE=$(( $1 * $1 )) ;;   ## no decimal point; use shell arithmetic
+    esac
+}
+
+square()
+{
+    arg "$@"      ## The arg function was introduced in Chapter 1
+    _square "$arg"
+    printf "%s\n" "$_SQUARE"
+}
+
+_cube()
+{
+    case $1 in
+        *.*) _fpmul $1 $1 $1
+             _CUBE=$_FPMUL
+             ;;
+        *) _CUBE=$(( $1 *  $1 * $1 )) ;;
+    esac
+}
+
+cube()
+{
+    arg "$@"
+    _cube "$arg"
+    printf "%s\n" "$_CUBE"
+}
+
+calc()
+{
+    awk 'BEGIN {print '"$*"'; exit }'
+}

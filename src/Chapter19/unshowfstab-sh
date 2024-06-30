@@ -1,0 +1,4 @@
+awk '/#.*/ { print; next }
+        NF { printf "%s\t", $2; next }
+           { print }
+'

@@ -1,0 +1,208 @@
+readgrid()
+{
+    rows=0
+    read line                 ## Read first line of file
+    case $line in             ## Test the first line
+     *\<ACROSS\ PUZZLE\>*)    ## It's in Across Lite text format
+            al=0
+            while read line   ## ... so continue until the grid is reached
+            do
+              case $line in
+                  *\<GRID\>*) al=1; break;;
+              esac
+            done
+            [ $al -eq 1 ] || exit 5 ## No grid found; return error
+            ;;
+      *) puz=$line
+         rows=1 ;;
+    esac
+
+    while read line           ## Continue reading the grid
+    do
+      case $line in
+          *\<*) break ;;      ## "<" indicates a new section, so quit here
+      esac
+      puz="${puz:+$puz$NL}$line" ## The grid is stored
+      rows=$(( $rows + 1 ))      ## The number of rows in the puzzle
+      cols=${#line}              ## The number of columns should not change
+    done
+}
+
+_sq() ## USAGE: _sq ROW COL  ## contents of square will be stored in $_SQ
+{
+    ## If the column is 0 or greater than the horizontal size of the puzzle
+    ## the square is assumed to contain a $block character.
+    [ $2 -eq 0 ] && { _SQ=$block; return; }
+    [ $2 -gt $cols ] && { _SQ=$block; return; }
+
+    ## Calculate linear offset from row and column
+    offset=$(( ($1 - 1 ) * ( $cols + 1 )  + $2 ))
+
+    ## Place the grid one square into each of the positional parameters
+    set -- $spuz
+
+    ## If the offset is outside the bounds of the grid, treat it as a block
+    if [ $offset -lt 1 -o $offset -gt ${#puz} ]
+    then
+      _SQ=$block
+    else  ## Store the corresponding character in $_SQ
+      eval "_SQ=\${$offset}"
+    fi
+}
+
+outfile=   ## If empty, <puzzle>.ps will be used
+sqsize=24  ## Square size in points (1 point = 1/72 inch)
+puz=       ## Empty the variable that will store the grid
+convert=   ## No conversion is done by default
+
+## Parse command-line options
+while getopts s:o:c: var
+do
+ case $var in
+     c) convert=$OPTARG ;;  ## Convert file to specified type
+     o) outfile=$OPTARG ;;  ## Specify output file
+     s) sqsize=$OPTARG ;;   ## Size of each square, in points
+ esac
+done
+shift $(( $OPTIND - 1 ))
+
+block=.
+font=Helvetica
+NL='
+'
+
+puzfile=$1
+
+## Strip suffix
+[ -z "$outfile" ] && {
+    outfile=${puzfile%.TXT} ## Across Lite text
+    outfile=${outfile%.cv}  ## my own version of it)
+    outfile=$outfile.ps     ## Add PostScript suffix
+}
+
+## If there's a filename on the command line use it, otherwise use stdin
+[ -n "$1" ] && readgrid < "$puzfile" || readgrid
+
+## Put spaces between all characters in grid, for use with _sq function
+spuz=`echo "$puz" | sed -e 's/./& /g' -e 's/^/ /' | tr '\n' '.'`
+
+{ ## All output in block goes to $outfile
+    echo  "%!PS-Adobe" ## file type ID
+
+    ## PostScript prolog, defining procedures
+    echo "/F { findfont exch scalefont setfont } def
+/nf { ptsize /$font F } def
+
+10 10 translate
+
+.5 setlinewidth %% Use half-point-thick lines
+
+/sqf { %% row col sqf :fill in block
+  /sqcol exch def
+  /sqrow exch def
+  sqcol sqsize mul sqrow sqsize mul moveto
+  sqsize 0 rlineto
+  0 sqsize rlineto
+  sqsize neg 0 rlineto
+  closepath fill
+} def
+
+/sqn { %% num row col sqn :print number of clue
+  1 sub sqsize mul exch
+  rows exch sub 1 add sqsize mul ptsize sub
+  moveto
+  show
+} def
+"
+
+    ## Print PostScript definitions
+    echo "
+/sqsize $sqsize def
+/ptsize sqsize 2.3 div def
+/rows $rows def
+/cols $cols def"
+
+    ## Draw grid lines
+    echo "0 0 moveto
+/x $sqsize $cols mul def
+/y 0 def
+/x1 0 def
+/y1 $sqsize def
+
+2 {
+   $cols 1 add {
+     gsave
+       x y rlineto stroke
+     grestore
+     x1 y1 rmoveto
+     } repeat
+     /y $sqsize $cols mul def
+     /x 0 def
+     /y1 0 def
+     /x1 $sqsize def
+     0 0 moveto
+   } repeat
+ nf
+"
+
+    row=1
+    clue=0
+
+    ## Loop though rows
+    while [ $row -le $rows ]
+    do
+      col=1
+      ## Loop through columns
+      while [ $col -le $cols ]
+      do
+        ac=0  ## Across clue flag
+        dc=0  ## Down clue flag
+        _sq $row $col ## Get contents of square
+        sq=$_SQ
+        case $sq in
+            ## If square contains a block, fill it in
+            $block) echo "$(( $rows - $row )) $(( $col - 1 ))  sqf" ;;
+            *) _sq $row $(( $col - 1 ))  ## Get contents of square to the left
+               lsq=$_SQ
+               if [ "$lsq" = "$block" ]  ## ... if it's a block
+               then
+                 _sq $row $(( $col + 1 )) ## ...get square to the right
+
+                 ## If square on left is a block, and square on right is not,
+                 ## this square begins an across word
+                 [ "$_SQ" != "$block" ] && ac=1
+               fi
+               _sq $(( $row - 1 )) $col ## Get contents of square above
+               usq=$_SQ
+               if [ "$usq" = "$block" ] ## ... if it's a block
+               then
+                 _sq $(( $row + 1 )) $col ## ... get square below
+
+                 ## If square above is a block, and square below is not,
+                 ## this square begins a down word
+                 [ "$_SQ" != "$block" ] && dc=1
+               fi
+
+               ## If square begins across or down word, increment $clue
+               if [ $(( $ac + $dc )) -ne 0 ]
+               then
+                 clue=$(( $clue + 1 ))
+                 echo "( $clue) $row $col sqn" ## Print the number
+               fi
+               ;;
+        esac
+        col=$(( $col + 1 ))
+        lsq=$sq
+      done
+      row=$(( $row + 1 ))
+      lastrow=$puzrow
+    done
+    echo "showpage"
+} > "$outfile"
+
+## If $convert is set, do the appropriate conversion
+case $convert in
+    *epsi) ps2epsi "$puzfile" ;;
+    *?*) convert -trim "$outfile" "${outfile%.ps}.${convert#.}" ;;
+esac
+

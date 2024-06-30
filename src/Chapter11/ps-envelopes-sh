@@ -1,0 +1,186 @@
+#! /bin/bash
+
+def_vars()
+{
+    pointsize=12   ## main address
+    rpointsize=12  ## return address
+
+    leading=1.2    ## this will be multiplied by point size to get line height
+    rleading=1.1   ## ditto for return address
+
+    font=Helvetica  ## Century-Schoolbook   ##Palatino  ##Times-Roman # etc...
+    rfont=Century   ## return address
+
+    separator=, ## required only for non-CSV files
+
+    ## These positions are guesstimates; adjust to taste
+    ## Units are inches
+
+    ## position of return address
+    return_x=.333
+    return_y=5.5
+
+    ## position of recipient's address
+    address_x=4
+    address_y=3.5
+
+    ## Fields to print (first field is 0)
+    ## To print more than one field in a line, separate field numbers with a comma
+    ## by default, a space will be used to separate the field;
+    ## to use something else, put it after the last number
+    ## In the example, fields 3 and 2, in that order, will be printed
+    ## on line 3, separated by " -- "
+    #fields=( 0 1 3,2\ --\  4 5 6 7 )
+
+    fields=( 0 1 2 3 4 5 6 7 8 )
+
+    ## Adjust the return address here, or put it in a configuration file
+    return=(
+     "Your Name"
+     "123 Forth Street"
+     "My Town"
+     "Province"
+     "Postal Code"
+     )
+}
+
+prolog() {
+    printf "%s\n" "%!PS
+/F { findfont exch scalefont setfont } def
+/pointsize $pointsize def
+/showline {
+            gsave show grestore
+            0 leading rmoveto
+          } def
+
+/inches { 72 mul } def
+
+%%EndProlog          "
+
+    printf "%s\n" "$pointsize /$font F"
+}
+
+print_return_address() {
+    printf "  gsave\n"
+    printf "   %s\n"  "/leading $rleading $rpointsize mul neg def"
+    printf "   %s\n" "$rpointsize /$rfont F"
+    printf "   %s\n" "$return_x inches $return_y inches moveto"
+    printf "   (%s) showline\n" "${return[@]}"
+    printf "  grestore\n"
+}
+
+print_address() {
+    for f in "${fields[@]}"
+    do
+      case $f in
+	          *,*)
+               str=
+	               fsep=${f##*[0-9]}
+	               f=${f%${fsep:= }}
+	               for fld in ${f//,/ }
+	               do
+	        	 str=${str:+"$str$fsep"}${values[$fld]}
+	               done
+	               printf "\t(%s) showline\n" "$str"
+               ;;
+	          *)
+	             [ -n "${values[$f]}" ] &&
+	                 printf "\t(%s) showline\n" "${values[$f]}"
+	        	          ;;
+      esac
+    done
+}
+
+print_envelope() {
+    printf "\n%%%%Page: %s\n" "${page:=1}"
+    printf "save\n"
+    printf "%s\n" "612 0 moveto  currentpoint translate 90 rotate"
+    print_return_address
+    printf "  gsave\n"
+    printf "   %s\n"  "/leading $leading $pointsize mul neg def"
+    printf "\t%s\n" "$address_x inches $address_y inches moveto"
+    print_address
+    printf "  grestore\n"
+    printf " %s\n" "showpage"
+    printf "restore\n"
+}
+
+csv_split() {
+    local record=${1%"${CR}"} ## Remove carriage return, if there is one
+    local right
+    local vnum=0
+    unset values  ## Reset the values array
+
+    ## Loop until there is nothing left in the record
+    while [ -n "$record" ]
+    do
+      case $record in
+          ## If the next record begins with quotation marks,
+          ##"extract up to the next quotes followed by a comma
+          \"*) right=${record#*\",}
+               value=${record%%\",*}
+               values[$vnum]=${value#\"}
+               ;;
+          ## otherwise extract to the next comma
+          *) values[$vnum]=${record%%,*}
+             right=${record#*,}
+             ;;
+      esac
+
+      ## Remove the extracted field from the record
+      case $record in
+	  *,*) record=${right} ;;
+	  *) record=${record#\"}
+	     values[$vnum]=${record%\"}
+	     break;;
+      esac
+
+      ## Escape parentheses
+      values[$vnum]=${values[$vnum]//\(/\\(}
+      values[$vnum]=${values[$vnum]//\)/\\)}
+      vnum=$(( $vnum + 1 ))
+    done
+}
+
+set_values() {
+    local IFS="${separator:-" "}"
+    case $file_type in
+      *CSV*)
+	    csv_split "$1"
+	    ;;
+      *)
+	    set -f  ## Turn off pathname expansion
+	    values=( ${1%"${CR}"} )
+
+	    set +f  ## Turn pathname expansion back on
+	            ;;
+    esac
+    num_values=${#values[@]}
+}
+
+progname=${0##*/}
+config_file=$HOME/.config/ps-envelopes.cfg
+def_vars  ## Define the variables with defaults
+
+## Parse command-line options
+while getopts c: var
+do
+  case $var in
+    c) config_file=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+file_type=CSV  ## Default file type
+
+[ -f "$config_file" ] && . "$config_file" ## Source config file
+
+prolog   ## Print the PostScript prolog
+page=1   ## Set page number
+cat "$@" | ## Take input from files on command line, or standard input, if none
+  while IFS= read -r line
+  do
+    set_values "$line"
+    print_envelope
+    page=$(( $page + 1 ))
+  done

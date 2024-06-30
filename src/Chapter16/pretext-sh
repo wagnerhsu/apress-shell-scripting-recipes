@@ -1,0 +1,28 @@
+## By default, output goes to the standard output where it can be
+## redirected to a file
+htmlfile=/dev/tty
+
+while getopts t:h: opt
+do
+  case $opt in
+      h) htmlfile=$OPTARG ;; ## output file
+      t) title=$OPTARG ;;    ## title
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+{
+    printf "%s\n" \
+     '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">' \
+     '<html lang="en">' \
+     ' <head>' \
+     "  <title>${title:-$1}</title>" \
+     ' </head>' \
+     ' <body>' \
+     "  <h2>${title:-$1}</h2>" \
+     '   <pre style="margin-left: 10%; margin-right: 10%;">'
+
+    sed 's/</\&lt;/g' "$@"  ## convert '<' to '&lt;'
+    printf "</pre>\n</body>\n</html>\n"
+} > "${htmlfile}"
+

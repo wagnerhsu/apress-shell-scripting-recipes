@@ -1,0 +1,15 @@
+#!/bin/bash
+CR=$'\r'                            ## carriage return; for removal of
+exec 3<>/dev/tcp/192.168.0.20/110   ## connect to POP3 server, port 110
+read ok line <&3                    ## get response from server
+[ "${ok%$CR}" != "+OK" ] && exit 5  ## check that it succeeded
+echo user poppy >&3                 ## send user name
+read ok line <&3                    ## get response
+[ "${ok%$CR}" != "+OK" ] && exit 5  ## check that it succeeded
+echo pass pop3test >&3              ## send password
+read ok line <&3                    ## get response
+[ "${ok%$CR}" != "+OK" ] && exit 5  ## check that it succeeded
+echo stat >&3                       ## request number of messages
+read ok num x <&3                   ## get response
+echo Messages: $num                 ## display number of messages
+echo quit >&3                       ## close connection

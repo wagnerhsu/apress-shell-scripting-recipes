@@ -1,0 +1,11 @@
+[ -z "$*" ] && exit 5 ## If no query, exit
+
+## If the $phbase variable is not set,
+## place the default files in $_phbase
+for f in ${phbase:-/var/data/phones $HOME/.phones}
+do
+    [ -f "$f" ] && _phbase="$_phbase $f"
+done
+
+## Search files listed in $_phbase, ignoring comments
+[ -n "$_phbase" ] && egrep -ih "$@" $_phbase 2>/dev/null | grep -v '^#'

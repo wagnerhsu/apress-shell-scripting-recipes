@@ -1,0 +1,7 @@
+NL='
+'
+sed -e "s/./\\${NL}&/g" ${1+"$@"} |
+    sort |
+      grep . |
+        uniq -c |
+          sort -n

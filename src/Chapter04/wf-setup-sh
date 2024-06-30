@@ -1,0 +1,65 @@
+description="Prepare word lists for searches and anagrams"
+
+progname=${0##*/}
+
+## if the command's name ends in -sh, it's the development version
+## so use the development versions of the function files
+case $progname in
+    *sh) . wf-funcs-sh ;;
+    *) . wf-funcs ;;
+esac
+
+
+configfile=$HOME/.config/wordfinder.cfg
+wordfiles="
+           singlewords
+           Compounds
+           singlewords.anag
+           Compounds.anag
+          "
+
+while getopts Vc: var
+do
+  case $var in
+      c) configfile=$OPTARG ;;
+
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+printf "\n\n"
+
+set_sysdict || exit 5
+
+write_config
+
+if checkfiles ${sysdict} $wordfiles
+then
+  printf "\n\tAll required files found in ${sysdict}\n"
+  exit
+fi
+
+[ -f $sysdict/singlewords ] || wf-clean
+[ -f $sysdict/Compounds ]   ||
+             wf-compounds "$sysdict/compounds" > $sysdict/Compounds
+
+## Is wordsort installed? (It is available from http://cfaj.freeshell.org)
+type wordsort &&
+  [ "`wordsort --version`" = "--EINORSV$TAB--version" ] &&
+     ws=1 || ws=0
+
+for file in singlewords Compounds
+do
+  [ -f "$sysdict/$file.anag" ] || {
+      if [ "$ws" -eq 1 ]
+      then
+        cut -f1 "$sysdict/$file" | wordsort
+      else
+        while read word
+        do
+          mkwsig "$word"
+          printf "\t%s\n" "$word"
+        done < "$sysdict/$file"
+      fi > "$sysdict/$file.anag"
+  }
+done

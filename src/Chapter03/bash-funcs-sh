@@ -1,0 +1,42 @@
+
+_sub()
+{
+    _SUB=${1/$2/$3}
+}
+
+## This function appears in the book as a one-liner,
+## but I prefer it this way, as it makes modification easier
+_gsub()
+{
+    _GSUB=${1//"$2"/"$3"}
+}
+
+_substr()
+{
+    if [ $2 -lt 0 ]
+    then
+      _SUBSTR="${1:$2:${3:-${#1}}}"
+    else
+      _SUBSTR="${1:$(($2 - 1)):${3:-${#1}}}"
+    fi
+}
+
+substr()
+{
+    if [ $2 -lt 0 ]
+    then
+       printf "%s\n" "${1:$2:${3:-${#1}}}"
+    else
+       printf "%s\n" "${1:$(($2 - 1)):${3:-${#1}}}"
+    fi
+}
+
+_insert_str()
+{
+    _string=$1
+    i_string=$2
+    i_c=${3:-2}  ## use default if position not supplied
+    i_1=${_string:0:i_c-1}
+    i_2=${_string:$i_c}
+    _INSERT_STR=$i_1$i_string$i_2
+}

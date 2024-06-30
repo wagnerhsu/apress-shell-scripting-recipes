@@ -1,0 +1,119 @@
+load_db()
+{
+    local IFS=$NL       ## Set IFS locally to a newline
+    local shdb=$1       ## The first positional parameter is the file
+    db=( `< "$shdb"` )  ## Slurp!
+}
+
+load_db_comments()
+{
+    local IFS=$NL     ## Set IFS locally to a newline
+    local shdb=$1     ## The first positional parameter is the file
+    local NB=${NB:-#} ## NB contains the comment character
+    db=( `grep -v "^[ $TAB]*$NB" "$shdb"` ) ## Slurp!
+}
+
+split_record()
+{
+    local IFS=${DELIM:- $TAB} ## if DELIM not set, uses space and TAB
+    local opts=$-             ## save shell option flags
+    set -f                    ## disable pathname globbing
+    record_vals=( $* )        ## store arguements in array
+
+    ## reset globbing only if it was originally set
+    case $opts in
+       *f*) ;;
+       *) set +f ;;
+    esac
+}
+
+csv_split() {
+    csv_vnum=0                  ## field number
+    csv_record=${1%"${CR}"}     ## remove carriage return, if any
+    unset record_vals           ## we need a pristine (global) array
+
+    ## remove each field from the record and store in record_vals[]
+    ## when all the records are stored, $csv_record will be empty
+    while [ -n "$csv_record" ]
+    do
+      case $csv_record in
+
+          ## if $csv_record starts with a quotation mark,
+          ## extract up to '",' or end of record
+          \"*) csv_right=${csv_record#*\",}
+               csv_value=${csv_record%%\",*}
+               record_vals[$csv_vnum]=${csv_value#\"}
+               ;;
+          ## otherwise extract to the next comma
+          *) record_vals[$csv_vnum]=${csv_record%%,*}
+            csv_right=${csv_record#*,}
+            ;;
+      esac
+
+      csv_record=${csv_right}      ## the remains of the record
+
+      ## If what remains is the same as the record before the previous
+      ## field was extracted, it is the last field, so store it and exit
+      ## the loop
+      if [ "$csv_record" = "$csv_last" ]
+      then
+        csv_record=${csv_record#\"}
+        record_vals[$csv_vnum]=${csv_record%\"}
+        break
+      fi
+      csv_last=$csv_record
+      csv_vnum=$(( $csv_vnum + 1 ))
+    done
+}
+
+_put_record()
+{
+    local NULL=
+    local IFS=${DELIM:-$TAB}
+    case $1 in
+        -n*) NULL=${1#-n} ## no space after the option letter
+             shift
+             ;;
+        -n) NULL=$2 ## space after the option letter
+            shift 2
+            ;;
+        *) _PUT_RECORD="$*"
+           return
+           ;;
+    esac
+    _PUT_RECORD=$(
+        for field in "$@"
+        do
+          printf "%s${DELIM:-$TAB}" "${field:-$NULL}"
+        done )
+
+}
+
+put_record()
+{
+    _put_record "$@" && printf "%s\n" "$_PUT_RECORD"
+}
+
+_put_csv()
+{
+     for field in "$@"  ## loop through the fields (on command line)
+     do
+       case $field in
+          ## If field contains non-numerics, enclose in quotes
+           *[!0-9.-]*)
+              _PUT_CSV=${_PUT_CSV:+$_PUT_CSV,}\"$field\"
+              ;;
+           "") _PUT_CSV=$_PUT_CSV","
+               ;;
+           *) _PUT_CSV=${_PUT_CSV:+$_PUT_CSV,}$field
+              ;;
+       esac
+     done
+     _PUT_CSV=${_PUT_CSV%,}     ## remove trailing comma
+}
+
+put_csv()
+{
+     _put_csv "$@" && printf "%s\n" "$_PUT_CSV"
+}
+

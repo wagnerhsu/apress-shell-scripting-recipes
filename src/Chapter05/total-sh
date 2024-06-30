@@ -1,0 +1,4 @@
+awk ' ## Add the value of each line to the total
+      {total += $1}
+      ## After all the lines have been processed, print the result
+  END {printf "%" prec "f\n", total}' prec=$precision ${1+"$@"}

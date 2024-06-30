@@ -1,0 +1,21 @@
+if [ "$1" = "-n" ]
+then       ## Get the address externally with lynx
+  ip=$(lynx -dump http://cfaj.freeshell.org/ipaddr.cgi)
+else
+  if=$1            ## Name of interface (optional)
+  system=$(uname)  ## What system is being used?
+  case $system in
+      ## Set the string appropriate to the OS
+      FreeBSD|NetBSD) sep="inet " ;;
+      Linux) sep="addr:" ;;
+      *) printf "System %s is not yet supported\n" "$system"
+          exit 1
+          ;;
+  esac
+  temp=$(ifconfig $if) ## Get the information
+  temp=${temp#*"$sep"} ## Remove everything up to the IP address
+  ip=${temp%% *}       ## Remove everything after the IP address
+fi
+
+printf "%s\n" "$ip"    ## Print the IP address
+

@@ -1,0 +1,23 @@
+
+## default field numbers may be changed by command-line options
+key=1    ## field to use as the key
+val=2    ## field containing desired value
+F=       ## use default field separator
+
+## parse command-line options
+while getopts k:f:v: opt
+do
+  case $opt in
+      f) F=$OPTARG ;;
+      k) key=$OPTARG ;;
+      v) val=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+str=$1     ## string to look up
+shift      ## remove look-up string from positional parameters
+
+## if $F is empty, the field separator is not changed
+awk ${F:+-F "$F"} '$key == str { print $val }
+   ' key=$key val=$val str="$str" "$@"

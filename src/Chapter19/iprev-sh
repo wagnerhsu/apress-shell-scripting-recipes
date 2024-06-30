@@ -1,0 +1,4 @@
+IP=$1               ## The address to be reversed is in the first argument
+IFS='.'             ## Set the field separator to a period
+set -- $IP          ## Split the address into its components
+echo "$4.$3.$2.$1"  ## Print the result in the reverse order

@@ -1,0 +1,101 @@
+define_dice()
+{
+    ## requires screen-vars: $cu_save $cu_restore $cu_d1 $NA
+    ## optional $ds, the character to use for the spots
+    ## provides variables d_w, dice{1..15}.
+    ds=${ds:-o}           ## The character used for the spots
+    ds2=$ds$ds            ## Two spots
+    ds3=$ds$ds$ds         ## Three spots
+    ds3x="$ds $ds $ds"    ## Three spots with spaces
+    ds4=$ds$ds$ds$ds      ## Four spots
+    ds5=$ds$ds$ds$ds$ds   ## Five spots
+    d_w=5                 ## Width, in characters, to allow for spots
+
+    ## Each die comprises 5 rows, the first and last being blank;
+    ## the $d_fmt string contains the code to save the cursor position,
+    ## print a row, restore the previous cursor position,
+    ## and move down one line
+    d_fmt="$B$cu_save %-$d_w.${d_w}s $cu_restore$cu_d1"
+
+    ## Each die, from 1 to 15 is stored in its own variable
+    dice1=$( printf "$d_fmt" "" ""          "  $ds"     ""          "")
+    dice2=$( printf "$d_fmt" "" "$ds"       ""          "    $ds"   "")
+    dice3=$( printf "$d_fmt" "" "$ds"       "  $ds"     "    $ds"   "")
+    dice4=$( printf "$d_fmt" "" "$ds   $ds" ""          "$ds   $ds" "")
+    dice5=$( printf "$d_fmt" "" "$ds   $ds" "  $ds"     "$ds   $ds" "")
+    dice6=$( printf "$d_fmt" "" "$ds3x"     ""          "$ds3x"     "")
+    dice7=$( printf "$d_fmt" "" "$ds3x"     "  $ds"     "$ds3x"     "")
+    dice8=$( printf "$d_fmt" "" "$ds3x"     " $ds $ds"  "$ds3x"     "")
+    dice9=$( printf "$d_fmt" "" "$ds3x"     "$ds3x"     "$ds3x"     "")
+    dice10=$(printf "$d_fmt" "" "$ds3x"     "$ds2 $ds2" "$ds3x"     "")
+    dice11=$(printf "$d_fmt" "" "$ds3 $ds"  "$ds3x "    "$ds $ds3"  "")
+    dice12=$(printf "$d_fmt" "" "$ds3 $ds"  "$ds2 $ds2" "$ds $ds3"  "")
+    dice13=$(printf "$d_fmt" "" "$ds5"      "$ds3x"     "$ds5"      "")
+    dice14=$(printf "$d_fmt" "" "$ds5"      "$ds3 $ds"  "$ds5"      "")
+    dice15=$(printf "$d_fmt" "" "$ds5"      "$ds5"      "$ds5"      "")
+    dice_defined=1
+    export dice1 dice2 dice3 dice4 dice5 dice6 dice7 dice8 dice9
+    export dice10 dice11 dice12 dice13 dice14 dice15 dice_defined d_w
+}
+
+show_die()
+{
+    ## First 2 arguments are row and column
+    ## Third argument is number on face of die
+    ## Requires screen functions printat, set_fgbg
+    ## Optional variables: fg and bg (defaults to black and white)
+    printat $1 $2
+    set_fgbg ${fg:-$white} ${bg:-$black}
+    case $dice_defined in "") define_dice ;; esac
+    eval "printf \"%s\" \"\$dice$3\"" #>&2
+}
+
+## Clear variables
+_random=
+dice_defined=
+
+## Load functions
+. rand-funcs
+. screen-funcs
+
+## Defaults
+row=3          ## screen row to print dice
+sides=6        ## number of sides on dice
+bg=$white      ## background colour
+fg=$black      ## foreground colour
+num=1          ## default number of dice
+
+## Parse command-line options
+while getopts vVhH-:s:n:f:b:c:r:p: var
+do
+  case $var in
+    b) get_colour $OPTARG  ## background colour
+       bg=$colour ;;
+    f) get_colour $OPTARG  ## foreground colour
+       fg=$colour ;;
+    n) num=$OPTARG ;;      ## number of dice
+    s) sides=$OPTARG ;;    ## number of sides on each die
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## Clear screen to default colours
+printf "$NA"
+clear
+
+## Generate random numbers for all the dice
+random -r -l 1 -u $sides -n $num
+
+## Place dice values in the positional parameters
+set -- $_RANDOM
+
+## Print the required number of dice
+n=0
+while [ $n -lt $num ]
+do
+  column=$(( $n * ($d_w + 4) + 2 ))
+  show_die $row $column $1
+  shift
+  n=$(( $n + 1 ))
+done
+printf "$NA\n\n"

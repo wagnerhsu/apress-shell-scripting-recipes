@@ -1,0 +1,28 @@
+description="List words ending with PATTERN"
+
+. wf-funcs-sh
+
+version="1.0"
+progname=${0##*/}
+compounds=
+
+while getopts vVc var
+do
+  case $var in
+    c) compounds=1 ;;
+    V) version; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+do_config || exit 5
+
+compounds=${compounds:+$dict/Compounds}
+
+{
+    cat $dict/singlewords
+    if [ -n "$compounds" ]
+    then
+        cut -f1 "$compounds"
+    fi
+} | grep -i ".$1$" | sort -fu

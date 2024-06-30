@@ -1,0 +1,1 @@
+Xdialog --left --msgbox "`ph "$@"`" 0 0

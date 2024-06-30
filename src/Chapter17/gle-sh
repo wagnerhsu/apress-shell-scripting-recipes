@@ -1,0 +1,296 @@
+progname=${0##*/}
+clear
+. screen-funcs
+. math-funcs
+. date-funcs
+
+main()
+{
+    gle_init     ## Load functions and set program-wide variables
+    while :
+    do           ## Endless loop (exit from within get_form)
+      tr_init    ## Initialize transaction record
+      get_form   ## Display record and get user entry
+    done
+}
+
+tr_form()
+{
+    line=2
+    linespace=2
+
+    printat $line 1
+    ## Use _show_date from standard-funcs (Chapter 1)
+    _show_date "$e_date"
+    printf "     TR#: $B%s$UB   Entry Date: $B%s$UB$cle" "$tr_num" "$_SHOW_DATE"
+
+    _show_date "${tr_date:=$DATE}"
+    tr_field Date    1 "$_SHOW_DATE"
+
+    [ -n "$acct" ] && lookup "$acct" "$GLDIR/accounts" && acct_name=$_LOOKUP
+
+    tr_field Account  2 "$acct${acct_name:+ - $acct_name}"
+
+    _fpmul ${amount:-0} .01  ## Convert cents to dollars
+    case $_FPMUL in
+        *.?) _FPMUL=${_FPMUL}0 ;;
+        *.??|*.*) ;;
+        *) _FPMUL=${_FPMUL}.00 ;;
+    esac
+    tr_field Amount  3 "$_FPMUL"
+
+    tr_field Client  4 "$client${client_name:+ - $client_name}"
+    tr_field Details 5 "$details"
+    tr_field Action  6 "$action"
+    info_line=$(( $line + $linespace ))
+    entry_line=$(( $info_line + $linespace ))
+    printat $info_line 1 "$cle"
+    printat $entry_line  1 "$cles"
+}
+
+tr_field()
+{
+    line=$(( $line + $linespace ))   ## Move down $linespace lines...
+    printat $line 1                  ## ...at left margin
+    tr_w=$(( ${COLUMNS:-80} - 20 ))  ## space on line for contents of field
+    printf " %12s [%d]: $B%-${tr_w}.${tr_w}s$UB$cle\n$cle" "$1" "$2" "$3"
+}
+
+get_form()
+{
+    while :
+    do
+      HF=/dev/null                  ## Reset history file
+      tr_form                       ## Display transaction
+      printat $info_line 1 "$cles"  ## Clear bottom of screen
+      printat $entry_line  1 "     Select 1-5, [s]ave, [n]ew : "
+      get_key
+      case $_KEY in
+
+          1)  ## Change transaction date
+              info_data=
+              prompt="Enter transaction date: "
+              sh_read && _parse_date "$_SH_READ" && tr_date=$_PARSE_DATE
+              ;;
+
+          2)  ## Enter account
+              info_data=$accts
+              prompt="Enter account code: "
+              HF=$GLDIR/accounts            ## For use with bash history
+              sh_read && acct=${_SH_READ%%$TAB*}
+              HF=
+              ;;
+
+          3)  ## Enter amount
+              info_data="Enter amount in dollars and cents (e.g., $123.45)"
+              prompt="      Enter amount: "
+              sort_amounts
+              HF=$GLDIR/amounts             ## For use with bash history
+              sh_read && {
+                  printf "%s\n""$_SH_READ" >> "$HF.all"
+                  _fpmul $_SH_READ 100
+                  _round $_FPMUL
+                  amount=${_ROUND}
+                  HF=
+              }
+              ;;
+
+          4)  ## Enter client
+              prompt="     Enter name (or code) of client: "
+              HF=$GLDIR/clients             ## For use with bash history
+              sh_read && {
+                  client=${_SH_READ%%$TAB*}
+                  [ -n "$client" ] &&
+                      lookup "$client" "$GLDIR/clients" &&
+                          client_name=$_LOOKUP
+              }
+              ;;
+
+          5)  ## Enter details of transaction
+              prompt="     Enter transaction details: "
+              HF=$GLDIR/details            ## For use with bash history
+              sh_read && details=$_SH_READ
+              ;;
+
+          6)  ## Enter disposition of [paper] record
+              prompt="     Action taken with [paper] record: "
+              HF=$GLDIR/actions            ## For use with bash history
+              sh_read && action=$_SH_READ
+              ;;
+
+          s)  save_transaction ;;
+
+          q|n)  ## Quit/New transaction
+              k=$_KEY
+              is_changed && query_save
+              tr_init
+              tr_form
+              case $k in
+                  q) printf "\r$cles"
+                     break 2 ;;
+              esac
+              ;;
+      esac
+    done
+}
+
+is_changed()
+{
+    ## Record has been changed if:
+
+    ## ...the amount is not 0
+    [ ${amount:-0} -ne 0 ] && return
+
+    ## ...there is anything in the account, client, details, or action fields
+    [ -n "$acct$client$details$action" ] && return
+
+    ## ...the transaction date is not today's date,
+    [ "$tr_date" != "$DATE" ] && return
+    return 1
+}
+
+query_save()
+{
+    printat $info_line 1 "$cles"
+    printat $entry_line 6
+    printf "%s" "Save current record [Y/n/c]? "
+    get_key
+    printat $info_line 1 "$cles"
+    case $_KEY in
+        n|N) ;;           ## fall through to action
+        c|C) continue ;;  ## go back to top of loop (i.e., ignore command)
+        *) save_transaction ;;  ## default action is to save the record
+    esac
+}
+
+lookup()
+{
+    code=$1
+    file=$2
+    [ -f "$file" ] && {
+              tmp=$(grep "^$code$TAB" "$file" | cut -f2)
+              [ -n "$tmp" ] && _LOOKUP=${tmp#*$TAB}
+       }
+}
+
+save_transaction()
+{
+    split_date $tr_date y m d
+    GL_file=$GLDIR/GL.$y
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+        "${tr_num:-.}" "${acct:-.}"    "${tr_date:-.}" "${amount:-.}" \
+        "${client:-.}" "${details:-.}" "${e_date:-.}"   "${action:-.}" \
+        >> $GL_file
+    tr_init
+}
+
+sh_read()
+{
+    printat $info_line 1 "$cles$RV"
+    printf "       $B%s$NA" "$info_data"
+    info_data=
+    printat $entry_line 1 "$cle"
+    [ -t 0 ] && stty echo
+    case $BASH_VERSION in
+        ## If this is bash, take advantage of history and command-line editing
+        [2-9]*|[[0-9][0-9]*)
+                      history -c      ## clear history
+                      history -r $HF  ## load history
+                      printf "$B"     ## print bold
+                      read -ep "     $prompt" _SH_READ
+                      printf "$UB"    ## remove bold
+                      ;;
+        *)  ## display $prompt and read input from user
+            printf "      $UB%s$B" "$prompt" >&2
+            read -r _SH_READ
+            ;;
+    esac
+
+    ## If a variable was named on the command line, assign entry to it
+    [ -n "$1" ] && eval "$1='$_SH_READ'"
+
+    ## Fail if nothing has been entered
+    [ -n "$_SH_READ" ]
+}
+
+sort_amounts()
+{
+    grep '.' "$HF.all" |         ## Extract all non-blank lines from history file
+     sort |                      ## Sort amounts
+      uniq -c |                  ## Count number of instances of each amount
+       sort -n  |                ## Sort numerically by number of instances
+        awk '{print $2}' > "$HF" ##  Remove counts, and store in history file
+}
+
+gle_init()
+{
+    date_vars
+
+    ##  If the -t option is given, or the program is called with the -sh extension,
+    ## use the test ledger file, not the real one
+    case $1 in
+        -t) testing=1 ;;
+        *)
+            case $progname in
+                *-sh) testing=1 ;;
+                *) testing= ;;
+            esac
+            ;;
+    esac
+
+    ## Directory to store General Ledger
+    if [ -n "$testing" ]
+    then
+      GLDIR=$HOME/.testing
+    else
+      GLDIR=$HOME/books
+    fi
+
+    ## Store most-used amounts in $GLDIR/amounts.all
+    ## for use with bash history
+    awk -F "\t" '{ printf "%.2f\n", $4 / 100 }
+                ' $GLDIR/GL.$YEAR > "$GLDIR/amounts.all"
+
+    ## Store actions for use with bash history
+    cut -f8 $GLDIR/GL.$YEAR | sort | uniq -c | sort -n |
+         awk "{ print $2 }" > actions
+}
+
+tr_init()
+{
+    date_vars  ## Initialize date and time variables
+
+    [ -d "$GLDIR" ] || {
+        ## Try to create directory if it doesn't exist
+        mkdir -p "$GLDIR"
+        [ -d "$GLDIR" ] || die 5 "Could not create $GLDIR"
+    }
+
+    acct=        ## Account
+    acct_name=   ## Look up $acct in $GLDIR/accounts file
+    tr_date=     ## Date of transaction
+    amount=      ## Amount in cents (12345, for $123.45)
+    client=      ## Usually an abbreviation...
+    client_name= ## ...which can be looked up in $GLDIR/clients file
+    details=     ## Details of transaction
+    e_date=$DATE ## Date of entry (today's date)
+    action=      ## E.g., e-mailed invoice, received checkque, etc..
+    HF=          ## History file for use with bash
+
+    ## Transaction number is incremented from last number in file
+    tr_num=$(( $(cut -f1 ~/books/GL* | sort -r | head -1) + 1 ))
+}
+
+cleanup()
+{
+   is_changed && query_save
+   [ -t 0 ] && {
+       [ -n "$_STTY" ] && stty $_STTY
+       stty sane
+   }
+   printf "\r$cles"
+   exit
+}
+
+main "$@"
+

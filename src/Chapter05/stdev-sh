@@ -1,0 +1,55 @@
+progname=${0##*/}
+table=0
+precision=.2
+
+## Parse command-line options
+while getopts tp: var
+do
+  case $var in
+      t) table=1 ;;
+      p) precision=$OPTARG ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+if [ $table -eq 0 ]  ## Values input one per line
+then
+  awk '{
+         tot += $1    ## Add value to total
+         x[NR] = $1 ## Add value to array for later processing
+       }
+       END {
+             mean = tot / NR  ## Calculate arithmetical mean
+             tot=0            ## Reset total
+             for (num in x) {
+                 ## The difference between each number and the mean
+                 diff = x[num] - mean
+
+                 ## Square difference, multiply by the frequency, and add to total
+                 tot += diff * diff
+               }
+               ## Deviation is total divided by number of items
+               printf "%" precision "f\n", sqrt( tot / NR )
+           }' precision=$precision ${1+"$@"}
+else  ##
+  awk '{
+       num += $2
+       tot += $1 * $2
+       items += $2
+       x[NR] = $1
+       f[NR] = $2
+       }
+       END {
+             mean = tot / num  ## Calculate arithmetical mean
+             tot=0            ## Reset total
+             for (num in x) {
+                 ## The difference between each number and the mean
+                 diff = x[num] - mean
+
+                 ## Square difference, multiply by the frequency, and add to total
+                 tot += diff * diff * f[num]
+               }
+               printf "%" precision "f\n", sqrt( tot / items )
+           }' precision=$precision ${1+"$@"}
+fi
+

@@ -1,0 +1,107 @@
+progname=${0##*/}
+. standard-funcs
+
+## The directory for storing the "bins"; if the variable is not set,
+## use the current directory
+bin_dir=${bin_dir:-.}
+
+## If the $bin_dir directory does not exist, create it
+[ -d "$bin_dir" ] || mkdir "$bin_dir" ||
+             die 5 "$progname: could not create $bin_dir"
+
+## The size of each bin; the default is a 70-minute CD
+bin_size=${bin_size:-733000000}
+
+## Set date and time variables (from standard-funcs, Chapter 1)
+date_vars
+
+## The default basename of size and date is used if $bin_basename is not set
+bin_basename=${bin_basename:-$bin_dir/$bin_size-$DATE}
+bin_basenum=${bin_basenum:-1}  ## Start numbering at 1 if not set
+
+## Count number of files (excluding directories)
+files=0
+for f in *
+do
+  [ -f "$f" ] && files=$(( $files + 1 ))
+done
+[ $files -eq 0 ] && die 1 "Try another day (no files)"
+
+## If verbose mode, print number of files
+[ ${verbose:-0} -gt 0 ] && {
+    printf "        Number of files: %d\n" $files
+}
+
+## Split files that are too large
+ls -l |              ## List files with details
+   grep -v '^d' |    ## Remove directories
+      sort -rn +4 |  ## Sort on fifth field; POSIX syntax: sort -k5rn
+ {
+    n=0
+    ## Read file info line at a time into variables
+    while read -r perms links owner group size month day time file
+    do
+      ## In verbose mode: print size of largest (i.e. first) file
+      [ ${verbose:-0} -gt 0 ] && [ $n -eq 0 ] &&
+           printf "     Largest file: %d bytes (%s)\n" $size "$file"
+
+      ## If file is larger than maximum size, split it
+      [ $size -gt $bin_size ] || break && {
+         [ ${verbose:-0} -gt 0 ] &&  ## Verbose mode: print info
+           printf "        Splitting: %s (%d bytes)\n" "$file" $size
+
+           ## Split large file and remove it
+           split -b $bin_size "$file" "$file." && rm "$file"
+      }
+      n=1
+    done
+}
+
+## If in verbose mode, print total size, and no. of disks required
+[ ${verbose:-0} -gt 0 ] && {
+    total=$(dir_size .)   ## Total size of files in directory
+
+    ## Divide to get number of bins required
+    bins=$(( $total / $bin_size ))
+
+    ## If there's a remainder, add an extra bin to hold it
+    [ $(( $bin_size * $bins )) -lt $total ] && bins=$(( $bins + 1 ))
+    printf "             Total size: %d\n" $total
+    printf "Minimum number of disks: %d\n" $bins
+}
+
+## Fill directories up to $bin_size
+ls -l | grep -v '^d' | sort -rn +4 | { ## sort -k5rn
+   while read -r perms links owner group size month day time file
+   do
+      [ -z "$file" ] && continue
+      bin_num=$bin_basenum
+      bin_=$bin_basename.$bin_num
+
+      ## create the directory if it doesn't already exist
+      [ -d $bin_ ] || mkdir $bin_ || die 5 "Could not create $bin_"
+
+      ## Look through the directories until we find one with space
+      while [ $(( $(dir_size $bin_/) + $size )) -gt $bin_size ]
+      do
+         bin_num=$(( $bin_num + 1 )) ## Next bin
+         bin_=$bin_basename.$bin_num ## Store name in temp. variable
+         [ -d $bin_ ] ||             ## Directory does not yet exist
+             mkdir $bin_ ||          ## Create it; exit if not created
+                die 5 "Could not create $bin_"
+      done
+
+      ## Keep track of number of bins used
+      [ $bin_num -gt ${bin_max:-0} ] && bin_max=$bin_num
+
+      ## If verbose mode, print info
+      [ ${verbose:-0} -gt 1 ] &&
+             printf "%-40s %-20s %12d\n" "$file" "${bin_##*/}" $size
+
+      ## Move file into the bin
+      mv "$file" "$bin_"
+   done
+
+   ## Verbose mode: report number of bins used
+   [ ${verbose:-0} -gt 0 ] && printf "   Number of disks used: %d\n" $bin_max
+}

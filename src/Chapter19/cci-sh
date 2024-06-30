@@ -1,0 +1,11 @@
+gunzip "$1"                      ## Uncompress the file
+case $1 in
+    *.gz) file=${1%.gz} ;;       ## File will have no extension
+    *.tgz) file=${1%.tgz}.tar ;; ## File will have .tar extension
+esac
+
+## Place the path to the extracted files in the positional parameters
+set -- $(tar -xvf "$file")
+## The first positional parameter will contain the name of the directory,
+## so cd into it, and configure and compile the  program
+cd $1 && ./configure && make && sudo make install

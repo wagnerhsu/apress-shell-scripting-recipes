@@ -1,0 +1,105 @@
+
+x2d2()
+{
+    _x2d2 "$@" && printf "%s\n" "$_X2D2"
+}
+
+_x2d2()
+{
+    ## Split argument on the command line into individual digits
+    x2d2_n1=${1%?} ## first digit
+    x2d2_n2=${1#?} ## second digit
+
+    ## Look up value of first digit
+    case $x2d2_n1 in
+        [0-9]) _X2D2=$(( $x2d2_n1 * 16 )) ;;
+        a|A) _X2D2=160 ;;   ## 16 * 10
+        b|B) _X2D2=176 ;;   ## 16 * 11
+        c|C) _X2D2=192 ;;   ## 16 * 12
+        d|D) _X2D2=208 ;;   ## 16 * 13
+        e|E) _X2D2=224 ;;   ## 16 * 14
+        f|F) _X2D2=240 ;;   ## 16 * 15
+        *) _X2D2= ; return 5 ;;
+    esac
+
+    ## Look up value of second digit and add to value of first digit
+    case $x2d2_n2 in
+        [0-9]) _X2D2=$(( $_X2D2 + $x2d2_n2 )) ;;
+        a|A) _X2D2=$(( $_X2D2 + 10 )) ;;
+        b|B) _X2D2=$(( $_X2D2 + 11 )) ;;
+        c|C) _X2D2=$(( $_X2D2 + 12 )) ;;
+        d|D) _X2D2=$(( $_X2D2 + 13 )) ;;
+        e|E) _X2D2=$(( $_X2D2 + 14 )) ;;
+        f|F) _X2D2=$(( $_X2D2 + 15 )) ;;
+        *) _X2D2= ; return 5 ;;
+    esac
+}
+
+dehex()
+{
+    _dehex "$@" && printf "%s\n" "$_DEHEX"
+}
+
+_dehex()
+{
+    dx_line=$1
+    _DEHEX=
+    while :
+    do
+      case $dx_line in
+        *${dx_prefix:=%}[0-9A-Fa-f][0-9A-Fa-f]*)
+
+           ## Store the portion of the string, up to,
+           ## but not including, the hex string, in $left
+           left=${dx_line%%${dx_prefix}[0-9a-fA-F][0-9a-fA-F]*}
+
+           ## Everything except $left asnd the percent sign
+           ## is stored in $right
+           right=${dx_line#${left}?}
+
+           ## The two hex digits are the first two characters
+           ## of $right; extract them with _substr
+           _substr "$right" 1 2
+
+           ## Remove the hex digits from $right
+           right=${right#??}
+
+           ## Convert the hex digits to decimal
+           _x2d2 "$_SUBSTR"
+
+           ## Add $left and the converted decimal number
+           ## to the result string, $_DEHEX
+           _DEHEX=$_DEHEX$left$(chr -n "$_X2D2")
+
+           ## Store $right in $dx_line for further processing
+           dx_line=$right
+           ;;
+        *) ## No more hex; add rest of line to $_DEHEX, and exit
+           _DEHEX=$_DEHEX$dx_line; break;;
+      esac
+    done
+}
+
+filedate() {
+    ## Split the date and place into the positional parameters
+    set -- $(ls -l   "$1")
+
+    ## Extract the month string up to the given month
+    mm=JanFebMarAprMayJunJulAugSepOctNovDec
+    idx=${mm%%$6*}
+
+    ## Calculate the number of the month from the length of $idx
+    month=$(( (${#idx} + 4 ) / 3 ))
+    day=$7
+    case $8 in
+	        ## If the output of ls shows the time instead of the year,
+        ## calculate which year it should be
+        *:*) eval $(date "+y=%Y m=%m")
+             [ $month -gt $m ] && year=$(( $y - 1 )) || year=$y ;;
+       *) year=$8 ;;
+    esac
+
+    printf "<span class=\"filedate\">${9%.cgi} updated "
+    printf "%d-%02d-%02d</span>\n" $year $month $day
+}
+

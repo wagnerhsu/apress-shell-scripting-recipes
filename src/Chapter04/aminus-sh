@@ -1,0 +1,35 @@
+version="1.0"
+progname=${0##*/}
+compounds=
+
+while getopts c var
+do
+  case $var in
+      c) compounds=1 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+word=$1
+done=
+left=
+right=$word
+while [ -n "$right" ]
+do
+  temp=${right#?}
+  l=${right%$temp}
+
+  ## check whether the same letter has already been removed
+  case $left in
+      *$l*) right=$temp
+            continue ;; ## don't repeat a letter
+  esac
+
+  result=`anagram ${compounds:+-c} $left$temp`
+  [ -n "$result" ] && {
+      printf "%c%s: " "-" "$l"
+      echo $result
+  }
+  left=$left${l}
+  right=$temp
+done | sort

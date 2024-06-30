@@ -1,0 +1,70 @@
+#! /bin/bash
+##  requires bash2+ or ksh93
+description="Find words that fit together in a grid"
+version="1.0"
+progname=${0##*/}
+compounds=
+
+while getopts vVc var
+do
+  case $var in
+    c) compounds=1 ;;
+    V) version; exit ;;
+    *);;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+max() {
+    _MAX=$1
+    _MIN=$1
+    shift
+    for num
+    do
+      [ $num -gt $_MAX ] && _MAX=$num
+      [ $num -lt $_MIN ] && _MIN=$num
+    done
+}
+
+## fail if there are fewer than 4 arguments
+[ $# -ne 4 ] && exit5
+
+mask1=$1
+mask2=$3
+ltr1=$2
+ltr2=$4
+
+IFS=$' \t\n'
+list1=( `wf ${compounds:+-c} "$mask1"` )
+letters=`printf "%s\n" "${list1[@]}" | cut -c$ltr1 | sort -fu`
+
+for letter in $letters
+do
+  maskA=${mask1:0:ltr1-1}$letter${mask1:ltr1}
+  maskB=${mask2:0:ltr2-1}$letter${mask2:ltr2}
+  list1=( `wf ${compounds:+-c} "$maskA"` )
+  list2=( `wf ${compounds:+-c} "$maskB"` )
+  [ ${#list2} -eq 0 ] && continue
+  max ${#list1[@]} ${#list2[@]}
+  n=0
+  w1=${#list1[0]}
+  w2=${#list2[0]}
+  [ $verbose -ge 1 ] && echo "MAX=$_MAX MIN=$_MIN maskA=$maskA maskB=$maskB"
+  while [ $n -lt $_MAX ]
+  do
+    if [  "${#list2[$n]}" -gt 0 ]
+    then
+      if [  "${#list1[$n]}" -gt 0 -a $n -eq 0 ]
+      then
+        printf "%${w1}s - %${w2}s\n" "${list1[n]}" "${list2[$n]}"
+      else
+        printf "%${w1}s   %${w2}s\n" "${list1[n]}" "${list2[$n]}"
+      fi
+    else
+      printf "%${w1}s\n" "${list1[n]}"
+    fi
+    n=$(( $n + 1 ))
+  done
+  echo
+done
+

@@ -1,0 +1,106 @@
+if [ "$RANDOM" = "$RANDOM" ]
+then
+  random()
+  {
+      ## Set defaults
+      rnd_num=1              ## Number of values to generate
+      rnd_lower=0            ## Lowest valueof range
+      rnd_upper=32767        ## Highest value of range
+      rnd_bank=200           ## Number of values to store
+      rnd_seed=              ## Seed for random number generator
+      _N=0
+      _RANDOM=
+
+      ## Parse command-line options, if any
+      case $* in *?*) rand_opts "$@" || return 5 ;; esac
+
+      set -- $_random ## Use remainder of previously generated numbers
+
+      ## The number to be generated must be as large as the number to be returned
+      [ $rnd_bank -lt $rnd_num ] && rnd_bank=$rnd_num
+      ## If there are not enough numbers stored (in $_random), generate more
+      if [ $# -lt "$rnd_num" ]
+      then
+        rnd_bank=$(( $rnd_bank - $# ))
+        set -- $_random $(echo "" | ${awk:-awk} '
+            {
+               if (length(seed) > 0) srand(seed)
+               else srand()
+               while ( n++ < bank )
+                 printf "%s ", int(rand()*(upper - lower + 1)) + lower
+            }' bank=$rnd_bank seed="$rnd_seed" lower=$rnd_lower upper=$rnd_upper)
+      fi
+
+      ## Build $_RANDOM with desired number of numbers
+      while [ $_N -lt $rnd_num ]
+      do
+        _RANDOM="${_RANDOM:+$_RANDOM }$1"
+        _N=$(( $_N + 1 ))
+        case ${1+X} in X) shift ;; esac
+      done
+
+      ## Assign remaining numbers to $_random for later use
+      _random=$*
+  }
+else
+   random()
+   {
+       ## Set defaults
+       rnd_num=1              ## Number of numbers to generate
+       rnd_lower=0            ## Lowest number of range
+       rnd_upper=32767        ## Highest number of range
+       rnd_seed=              ## Seed for random number generator
+      _N=0
+      _RANDOM=
+
+       ## Parse command-line options, if any
+       case $* in *?*) rand_opts "$@" || return 5 ;; esac
+
+       ## Seed random number generator if a seed has been given
+       [ -n "$rnd_seed" ] && RANDOM=$rnd_seed
+
+       rnd_mod=$(( $rnd_upper - $rnd_lower + 1 ))
+       while [ $_N -lt $rnd_num ]
+       do
+         _RANDOM="${_RANDOM:+$_RANDOM }$(( $RANDOM % $rnd_mod + $rnd_lower ))"
+         _N=$(( $_N + 1 ))
+       done
+   }
+fi
+
+rand_opts()
+{
+    OPTIND=1
+    while getopts b:n:l:u:s:r var
+    do
+      case $var in
+          b) rnd_bank=$OPTARG ;;   ## Number of values to generate
+          l) rnd_lower=$OPTARG ;;  ## Lower end of range
+          n) rnd_num=$OPTARG ;;    ## Number of values to return
+          r) _random= ;;           ## Reset
+          s) rnd_seed=$OPTARG ;;   ## Seed the random number generator
+          u) rnd_upper=$OPTARG ;;  ## Highest number to generate
+          *) return 5 ;;           ## Invalid option
+      esac
+    done
+}
+
+toss()
+{
+    _toss=$_random               ## Save any previously generated values
+    random -r -l0 -u1  ${1:+-n $1}   ## Toss
+    _random=$_toss               ## Restore previous values
+    [ ${_RANDOM%% *} -eq 1 ]     ## Test
+}
+
+_randstr()
+{
+    random -l 1 -u $#
+    eval _RANDSTR=\${$_RANDOM}
+}
+
+randstr()
+{
+    _randstr "$@" && printf "%s" "$_RANDSTR"
+}
+

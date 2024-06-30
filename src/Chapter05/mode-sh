@@ -1,0 +1,51 @@
+progname=${0##*/}
+table=0     ## by default the file contains a simple list, not a table
+
+## Parse the command-line options
+while getopts tT var
+do
+  case $var in
+      t) table=1 ;;
+      T) table=2 ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## There are really three separate scripts,
+## one for each configuration of the input file
+if [ $table -eq 0 ]
+then
+  ## The input is a simple list in one column
+  awk '{
+      ++x[$1]    ## Count the instances of each value
+      if ( x[$1] > max ) max = x[$1] ## Keep track of which has the most
+     }
+     END {
+        if ( max == 1 ) exit ## There is no mode
+
+        ## Print all values with max instances
+        for ( num in x ) if ( x[num] == max ) print num
+     }' ${1+"$@"}
+elif [ $table -eq 1 ]
+then
+  ## The second column contains the number of instances of
+  ## the value in the first column
+  awk '{  x[$1] += $2  ## Add the number of instances of each value
+          if ( x[$1] > max ) max = x[$1] ## Keep track of the highest number
+       }
+     END {  ## Print the result
+          if ( max == 1 ) exit
+          for ( num in x ) if ( x[num] == max ) print num
+         }' ${1+"$@"}
+elif [ $table -eq 2 ]
+then
+  ## The first column contains the number of instances of
+  ## the value in the second column
+  awk '{  x[$2] += $1
+          if ( x[$1] > max ) max = x[$2]
+       }
+     END {  ## Print the result
+          if ( max == 1 ) exit
+          for ( num in x ) if ( x[num] == max ) print num
+         }' ${1+"$@"}
+fi | sort

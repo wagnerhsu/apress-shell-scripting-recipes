@@ -1,0 +1,205 @@
+mk_htmlheader()
+{
+    date_vars  ## from standard-funcs which is sourced by html-funcs
+
+    ## Look up user's full name in /etc/passwd (see Chapter 15)
+    name=$(lookup -f: -v5 $USER /etc/passwd)
+
+    ## Use name of current directory as the title
+    title=${PWD#${PWD%/*/*}}
+
+    ## Form the name of the CSS file from the name of the index file
+    css_file=${filename%.html}.css
+
+    ## If the CSS file is not in the current directory,
+    ## but it is in the parent directory, link to it
+    [ -f "$css_file" ] ||
+       { [ -f "../$css_file" ] && ln -s "../$css_file" . ; }
+
+    ## Print the header
+    printf "%s\n" \
+     '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">' \
+     '<html lang="en">' \
+     "<!-- $Id: $filename, $datestamp, ${name:-$USER} $ -->" \
+     ' <head>' \
+     "  <title>${title#/}</title>" \
+     "  <link rel=\"stylesheet\" type=\"text/css\" href=\"$css_file\"" \
+     ' </head>' \
+     " <body class=\"${filename##*.}\">" \
+     "  <span class=\"h2\">Listing of $PWD</span>" \
+     '  <div class="main">' \
+     '   <ul>'
+}
+
+mk_htmlfooter()
+{
+    ## Close all the open tags
+    printf "%s\n" "   </ul>" "  </div>" " </body>" "</html>"
+}
+
+## Defaults; these may be changed by command-line options
+verbose=0             ## Don't print any progress reports
+recursive=0           ## Don't descend into directories
+filename=index.html   ## File name for generated HTML file
+vopts=                ## Verbose options, used for recursive operation
+listfile=0            ## Exclude the index file itself from the listing
+dotfiles=             ## Do not include dot files
+usetype=0             ## Do not use file type if there is no title
+
+progname=${0##*/}
+. html-funcs  ## Load functions
+
+## Parse command-line options
+while getopts vRdi:lf var
+do
+  case $var in
+      d) dotfiles=.* ;;
+      f) usetype=1 ;;
+      i) filename=$OPTARG ;;
+      l) listfile=1 ;;
+      R) recursive=1 ;;
+      v) verbose=$(( $verbose + 1 ))
+         vopts=${vopts}v ;;
+      *) die 5 "Invalid option: $var" ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## Change to directory on the command line, if any
+[ -d "${1:-.}" ] && cd "${1:-.}" || exit 5
+
+## Set $PWD if the shell doesn't
+[ -z "$PWD" ] && PWD=$(pwd)
+
+## To avoid corrupting a page that may be loaded into a browser
+## while the indexing is in progress, it is saved to a temporary
+## file. That file is then moved in place of the original file.
+tempfile=$(mktemp $filename.XXXXXX)
+
+{
+    mk_htmlheader  ## Print the HTML header and top of <body>
+
+    for file in * $dotfiles
+    do
+
+      ## If dot files are enabled, the current directory and parent
+      ## directory will show up. The script ignores them.
+      case $file in
+          .|..) continue ;;
+      esac
+
+      ## The file we are creating will be ignored unless
+      ## the -l option has been selected
+      [ "$file" = "$filename" ] && [ $listfile -eq 0 ] && continue
+
+      ## Clear variables
+      title=
+      class=
+
+      ## In very verbose (-vv) mode, print the name of every file
+      [ $verbose -ge 2 ] && printf "%s\n" "$PWD/$file" >&2
+
+      if [ -d "$file" ]
+      then
+        ## Recursive mode; descend into directories
+        ## by calling the script with the directory as the argument
+        if [ $recursive -eq 1 ]
+        then
+
+          ## Verbose mode: print name directory being descended into
+          [ $verbose -ge 1 ] &&
+             printf "\nDescending into %s..." "$PWD/$file" >&2
+
+          ## Call the same program with options from the command line
+          $0 -${vopts}Ri "$filename" "$file"
+        fi
+
+        ## Information for listing
+        class=${class:+$class }dir ## $file is a directory, so add "dir" to class
+        title=""
+        file=$file/
+      else
+
+        ## The file's extension is used to determine the class; if the
+        ## file type may contain a title, it is searched for and used
+        ## in the listing
+
+        case $file in
+            *.html|*.shtml)
+                class=${class:+$class }html
+                title=$(html_title "$file")
+                ;;
+            *.xml)
+                class=${class:+$class }xml
+                title=$(html_title "$file")
+                ;;
+            *[-.]sh)
+                title=$(head "$file")
+                class=${class:+$class }shell
+                case $title in
+                    *'# DESCRIPTION:'*)
+                        title=${title#* DESCRIPTION: }
+                        title=${title%%$NL*}
+                        ;;
+                    *description=*) title=${title#*description=}
+                        title=${title%%$NL*}
+                        ;;
+                    *) title= ;;
+                esac
+                ;;
+            *.ps|*.eps|*.epsi)
+               title=$(head "$file")
+               case $title in
+                   *%%Title:\ *)
+                       title=${title##*%%Title: }
+                       title=${title%%$NL*}
+                       class=${file##*.}
+                       ;;
+                   *) title= ;;
+               esac
+               ;;
+            *)
+                title=
+                if [ -L "$file" ]
+                then
+                  class="$class symlink"
+                elif [ -x "$file" ]
+                then
+                  class="$class exe"
+                else
+                  case $file in
+                      *.*) class="$class ${file##*.}" ;;
+                      *) class="$class file" ;;
+                  esac
+                fi
+                ;;
+        esac
+      fi
+
+      ## If a title has been generated, use <span class=""> to display it
+      if [ -n "$title" ]
+      then
+        title=${title:+&mdash; <span class=\"title\">$title</span>}
+
+      ## Otherwise do nothing unless the user has requested the
+      ## file type as a default.
+      elif [ $usetype -ge 1 ]
+      then
+        title=$(file "$file")
+        title=" &mdash ${title#*:}"
+      fi
+
+      class=${class# } ## Remove leading space, if any
+
+      ## Print listing
+      printf "    <li class=\"%s\"><a href=\"%s\">%s %s</a></li>\n" \
+                   "${class:-file}" "$file" "$file" \
+                   "$title"
+    done
+
+    ## Print footer
+    mk_htmlfooter
+
+} > "$tempfile"
+chmod a+r "$tempfile"
+mv "$tempfile" "$filename"

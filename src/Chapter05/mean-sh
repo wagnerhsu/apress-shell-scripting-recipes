@@ -1,0 +1,34 @@
+table=0
+
+## Parse command line otions
+while getopts VtT var
+do
+  case $var in
+    t) table=1;;
+    T) table=2 ;;
+    V) echo $version; exit ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## There are three different awk programs, one for each input format
+if [ $table -eq 0 ]  ## One number per line
+then
+  awk '{ tot += $1 }              ## Add number to the total
+       END { print tot / NR }  ## Divide total by number of lines
+      '  ${1+"$@"}
+elif [ $table -eq 1 ]  ## Each line has number of occurrences followed by the number
+then
+  awk '{
+       num += $2          ## Count total number of occurrences
+       tot += $1 * $2  ## Total is number multiplied by number of occurrences
+       }
+       END {print tot / num }' ${1+"$@"} ## Divide total by number of occurrences
+elif [ $table -eq 2 ]  ## Each line has number followed by the number of occurrences
+then
+  awk '{
+       num += $1          ## Count total number of occurrences
+       tot += $1 * $2     ## Total is number multiplied by number of occurrences
+       }
+       END { print tot / num }' ${1+"$@"} ## Divide total by number of occurrences
+fi

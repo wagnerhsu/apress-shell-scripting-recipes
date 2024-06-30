@@ -1,0 +1,27 @@
+## Use the bash readline library if it's available
+case ${BASH_VERSION%%.*} in
+    [2-9]|[0-9][0-9]) read_opt='-rep' ;;
+    *) read_opt=-r ;;
+esac
+
+## The prompt will only be displayed if the standard input
+## is connected to a terminal; bash does this automatically
+## when read's -p option is used; other shells need to test for it
+prompt=" Enter name: "
+[ -n "$read_opt" ] && read $read_opt "$prompt" name || {
+  [ -t 0 ] && printf "%s" "$prompt"
+  read $read_opt name
+}
+
+set -f                  ## Turn off pathname expansion
+eval "set -- $name"     ## Put the name into the positional parameters
+first=$1                ## First name is $1
+eval "last=\${$#}"      ## Last name is the last parameter
+shift                   ## Remove the first parameter
+middle=$*               ## Middle name is what's left, after
+middle=${middle% $last} ## removing the last name
+
+## Adjust output to your own needs
+printf "\n  Last name: %s\n" "$last"
+printf " First name: %s\n" "$first"
+printf "Middle name: %s\n" "$middle"

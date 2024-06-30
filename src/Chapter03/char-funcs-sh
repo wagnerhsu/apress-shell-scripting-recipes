@@ -1,0 +1,115 @@
+chr()
+{
+   ## defaults can be changed by command-line options
+   sep=      ## nothing is inserted between characters
+   nl='\n'   ## a new line is printed after all arguments are processed
+
+
+   ## Parse command-line options
+   OPTIND=1
+   while getopts s:n var
+   do
+     case $var in
+         s) sep=$OPTARG ;;   ## separator string to place between characters
+         n) nl= ;;           ## suppress newline
+     esac
+   done
+   shift $(( $OPTIND - 1 ))
+
+   ## pipe arguments, 1 to a line, into awk, which converts the numbers
+   ## into the equivalent character
+   printf "%s\n" "$@" | awk '{printf "%c%s", $1, sep}' sep="$sep"
+   printf "%b" "$nl"
+}
+
+asc()
+{
+    ## loop through the arguments on the command line
+    for char
+    do
+      ## print the ASCII value of the first character of $char
+      printf "%d\n" "'$char" 2>/dev/null
+    done
+}
+
+nxt()
+{
+    ## The default increment is 1, the next character
+    inc=1
+    case $1 in
+        [+-]*[!0-9]*) ;;         ## no increment is specified, so use the default
+        [+-][0-9]*) inc=$1   ## increment line may be positive or negative
+                 shift                ## remove increment from positional parameters
+                 ;;
+        *) ;;
+    esac
+    for asc in $(asc $*)   ## loop through the converted arguments
+    do
+      chr $chr_opts $(( $asc + ${inc#+} )) ## convert incremented number to character
+    done
+    printf "\n"
+}
+
+_upr()
+{
+    ## a look-up table is the fastest method
+    case $1 in
+        a*) _UPR=A ;;        b*) _UPR=B ;;
+        c*) _UPR=C ;;        d*) _UPR=D ;;
+        e*) _UPR=E ;;        f*) _UPR=F ;;
+        g*) _UPR=G ;;        h*) _UPR=H ;;
+        i*) _UPR=I ;;        j*) _UPR=J ;;
+        k*) _UPR=K ;;        l*) _UPR=L ;;
+        m*) _UPR=M ;;        n*) _UPR=N ;;
+        o*) _UPR=O ;;        p*) _UPR=P ;;
+        q*) _UPR=Q ;;        r*) _UPR=R ;;
+        s*) _UPR=S ;;        t*) _UPR=T ;;
+        u*) _UPR=U ;;        v*) _UPR=V ;;
+        w*) _UPR=W ;;        x*) _UPR=X ;;
+        y*) _UPR=Y ;;        z*) _UPR=Z ;;
+        *) _UPR=${1%${1#?}} ;;
+    esac
+}
+
+upr()
+{
+    _UPR=
+    ## convert character[s] to upper case
+    for chr
+    do
+       _upr "$chr"
+       printf "%s${sep:-\\n}" "$_UPR"
+    done
+    printf "${_UPR:+\n}"
+}
+
+_lwr()
+{
+    _LWR=
+    case $1 in
+        A*) _LWR=a ;;        B*) _LWR=b ;;
+        C*) _LWR=c ;;        D*) _LWR=d ;;
+        E*) _LWR=e ;;        F*) _LWR=f ;;
+        G*) _LWR=g ;;        H*) _LWR=h ;;
+        I*) _LWR=i ;;        J*) _LWR=j ;;
+        K*) _LWR=k ;;        L*) _LWR=l ;;
+        M*) _LWR=m ;;        N*) _LWR=n ;;
+        O*) _LWR=o ;;        P*) _LWR=p ;;
+        Q*) _LWR=q ;;        R*) _LWR=r ;;
+        S*) _LWR=s ;;        T*) _LWR=t ;;
+        U*) _LWR=u ;;        V*) _LWR=v ;;
+        W*) _LWR=w ;;        X*) _LWR=x ;;
+        Y*) _LWR=y ;;        Z*) _LWR=z ;;
+        *) _LWR=${1%${1#?}} ;;
+    esac
+}
+
+lwr()
+{
+    ## convert character[s] to lower case
+    for chr
+    do
+      _lwr "$chr" && printf "%s" "$_LWR"
+    done
+    printf "${_LWR:+\n}"
+}

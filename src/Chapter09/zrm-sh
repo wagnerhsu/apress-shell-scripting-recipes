@@ -1,0 +1,22 @@
+## Parse command-line options
+opts=
+while getopts fiv var
+do
+  case $var in
+      f) opts="$opts -f" ;;
+      i) opts="$opts -i" ;;
+      v) opts="$opts -v" ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+## If no files are specified on the command line,
+## check all files in the current directory
+[ $# -eq 0 ] && set -- *
+
+## Examine each file, and delete it if empty
+for f
+do
+  [ -s "$f" ] && continue ## file exists, but is not empty
+  [ -f "$f" ] && rm ${opts:--f} "$f"
+done

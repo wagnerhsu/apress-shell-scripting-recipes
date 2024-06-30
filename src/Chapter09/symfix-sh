@@ -1,0 +1,73 @@
+fix_pwd()
+{
+    ls -l "$@" | grep "^l" |
+    while read -r perms links owner group size month day time file x link
+    do
+      link=${file#* -\> }
+      file=${file% -\> *}
+      [ -e "$link" ] || {
+          if [ $interactive -ge 1 ]
+          then
+            printf "Remove %s (%s) (Y/n/q)? " "$file" "$link"
+            get_key < /dev/tty
+            printf "\n"
+            case $_KEY in
+                y|Y|"") ok=1 ;;
+                q|Q) break ;;
+                *) ok=0 ;;
+            esac
+          fi
+          [ $verbose -ge 1 ] &&
+           printf "Broken link: '%s'; removing %s\n"  "$link" "$file" >&2
+          [ "$ok" -eq 1 ] && rm "$file"
+      }
+    done
+}
+
+progname=${0##*/}  ## extract name of script
+
+## Default settings
+interactive=0
+recurse=0
+verbose=0
+R_opt=
+ok=1
+opts=ivR
+
+. standard-funcs  ## load functions
+
+## Parse command-line options
+while getopts $opts var
+do
+  case $var in
+      i) interactive=1
+         R_opt="$R_opt -i" ;;
+      R) recurse=1 ;;
+      v) verbose=$(( $verbose + 1 ))
+         R_opt="$R_opt -v" ;;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+#######  is_dir function is in standard-funcs #######
+## If a directory is given on the command line, enter it
+## (or loop through each of them, if there is more than one)
+## In recursive mode, is_dir is called to check
+## whether there are any subdirectories in the current directory
+if [ -d "$1" ]
+then
+  for dir
+  do
+    (
+        [ -L "$dir" ] && continue  ## do not descend symlinked directories
+        cd "$dir" || continue
+        [ $verbose -ge 1 ] && printf "Directory: %s\n" "$PWD"
+        fix_pwd
+        [ $recurse -eq 1 ] && is_dir ./*/ && eval "$0 -R $R_opt  ./*/"
+    )
+  done
+else
+  fix_pwd "$@"
+  [ $recurse -eq 1 ] && is_dir ./*/ && eval "$0 -R $R_opt  ./*/"
+  : ## return successfully even if [ $recurse -eq 1 ] fails
+fi

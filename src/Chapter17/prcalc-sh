@@ -1,0 +1,119 @@
+sh_read()
+{
+    [ -n "$x" ] && printf "%s\n" "$x" >> $HF
+    case $BASH_VERSION in
+       ## If this is bash, take advantage of history and command-line editing
+       [2-9]*|[[0-9][0-9]*)
+                [ -n "$x" ] && {
+                    history -c     ## Clear the history
+                    history -r $HF ## Read history from file
+                }
+                read -ep " : " ${1:-x}
+                ;;
+       *) printf " : " >&2; read ${1:-x} ;;
+   esac
+}
+
+prc_init()
+{
+    ## Initialize variables
+    NL='
+'
+    total=0
+    PR_N=0
+    x=
+    op=
+
+    set -f    ##  turn off pathname expansion
+
+    ## The history file is re-created every session,
+    ## or whenever the total is reset with =
+    HF=$HOME/$progname.history.$$
+    n=
+    ## add increment if file exists
+    while [ -f "$HF${n:+.$n}" ]
+    do
+      n=$(( ${n:-0} + 1 ))
+    done
+    HF="$HF${n:+.$n}"
+    > $HF
+    [ -t 0 ] && printf "History file is %s\n" "$HF" >&2
+
+    ## If standard input is not connected to a terminal,
+    ## send prompts and progress info to the bit bucket
+    [ -t 0 ] || exec 2>/dev/null
+}
+
+progname=${0##*/}
+prc_init
+
+## The main loop of the script reads the user's input,
+## parses the operator and operand,
+## and passes it to awk in much the same way as in the calc script.
+while :
+do
+   printf "%10s" "$total" >&2
+   sh_read
+   case $x in
+       *%) ## Percentage sign can go after the number
+           op=%
+           num=${x%?}
+           ;;
+       ""|q|x) break ;;  ## Quit, exit, etc...
+       h|s) ## A subshell is used to prevent the change to IFS,
+            ## or the redirection of STDERR, affecting the rest of the script.
+           (
+               IFS=$NL
+               [ $x = s ] && exec 2>&1 ## Send history to standard output
+               printf "%s\n" $history >&2
+           )
+           x=
+           continue
+           ;;
+       x*) op=*; num=${x#x} ;;
+       v) ## Toggle verbose mode
+          [ ${verbose:-0} -eq 1 ] &&
+               verbose=0 ||
+               verbose=1
+
+          continue
+          ;;
+       [a-zA-Z]*) ## Ignore invalid input
+                  x=
+                  continue ;;
+       =) ## print result and reset total to 0
+          printf "%s\n" "$total"
+          prc_init
+          continue
+          ;;
+       *) ## Separate operator and operand
+          op=${x%%[.0-9]*}
+          num=${x#"$op"}
+          ;;
+   esac
+
+   ## Adjust operator and operand for percentage calculation
+   case $op in
+       *%*)
+           op=*
+           num="$num / 100"
+           ;;
+   esac
+
+   ## Add current operation to history
+   history="$history$NL$total ${op:-+} $num"
+   PR_N=$(( $PR_N + 1 ))
+
+   old=$total
+   total=$(awk " BEGIN { OFMT= \"%f\"
+                        printf \"%s\n\", $total ${op:-+} $num
+                        exit }")
+
+   ## In verbose mode, print operation (against right margin)
+   [ ${verbose:-0} -ge 1 ] && {
+       w=$(( ${COLUMNS:-80} - 1 ))
+       printf "%${w}.${w}s\r" "$old ${op:-+} $num = $total" >&2
+   }
+done
+printf "\n" >&2
+printf "%s\n" "$total"

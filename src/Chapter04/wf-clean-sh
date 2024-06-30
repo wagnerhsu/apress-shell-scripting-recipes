@@ -1,0 +1,38 @@
+ description="Convert accented characters to ASCII and remove carriage returns"
+ version="1.0"
+ author="Chris F.A. Johnson"
+ progname=${0##*/}
+
+ . standard-vars  ## load variable definitions, including CR
+
+ die()
+ {
+   exitcode=$1
+   shift
+   if [ "$*" ]
+   then
+     echo "$*"
+   fi
+   exit ${exitcode:-1}
+ }
+
+ file=${1:-`printf "Enter file name: " >&2;read file; echo $file`}
+ [ -f "$file" ] || die 5 "$progname: File ($file) does not exist"
+ w
+ ## set list of accented characters and their equivalent ASCII character
+ accents="ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖØÙÚÛÜİàáâãäåçèéêëìíîïñòóôõöøùúûüı"
+ ascii="AAAAAACEEEEIIIIDNOOOOOOUUUUYaaaaaaceeeeiiiinoooooouuuuy"
+
+ ## Convert accented characters to ASCII,
+ ## remove carriage returns,
+ ## and delete words that do not begin or end with an ASCII character
+ tr "$accents" "$ascii" < "$file" |
+    sed -e 's/\015$CR//' \
+        -e '/^[^a-zA-Z]/d' \
+        -e '/[^a-zA-Z]$/d$' > "$file.clean"
+
+ ## store any words that contain non-ASCII characters in the compounds file...
+ grep '[^a-zA-Z]' "$file.clean" > compounds
+
+ ## ... and the rest in the singlewords file
+ grep -v '[^a-zA-Z]' "$file.clean" > singlewords

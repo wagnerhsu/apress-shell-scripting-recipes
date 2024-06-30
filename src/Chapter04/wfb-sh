@@ -1,0 +1,27 @@
+description="Find words beginning with pattern supplied on the command line"
+
+. wf-funcs-sh
+
+version="1.0"
+progname=${0##*/}
+
+while getopts vVc var
+do
+  case "$var" in
+      c) compounds=1 ;;
+      V) version; exit ;;
+      *);;
+  esac
+done
+shift $(( $OPTIND - 1 ))
+
+do_config || exit 5
+
+compounds=${compounds:+$dict/Compounds}
+{
+    cat $dict/singlewords
+    if [ -n "$compounds" ]
+    then
+      cut -f1 $dict/Compounds
+    fi
+} | grep -i "^$1." | sort -fu

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+shopt -s checkwinsize
+eval `date "+ datestamp=%Y-%m-%d hour=%H minute=%M"`
+logfile=$HOME/.pfilter/logs/$datestamp.log
+touch $logfile
+ls -l $logfile
+tail -n666 --follow=name $logfile | {
+    A=1
+    D=2
+    R=3
+    S=4
+    X=0
+    colour[$X]=$'\e[0m'
+    colour[$A]=$'\e[43m'
+    colour[$D]=$'\e[47m'
+    colour[$R]=$'\e[43;34m'
+    colour[$S]=$'\e[47;34m'
+    colour[0]=$'\e[0m'
+    xw=$(( $COLUMNS - 56 ))
+
+    while IFS=$'\t' read -r status msgnum filter_file \
+                     from msgsize mailbox server date subject
+    do
+      xw=$(( $COLUMNS - 55 ))
+
+      fmt="%3d %c %-7s %-19.19s %-13.13s %6s %-${xw}.${xw}s\n"
+      eval "clr='\${colour[\$${status// /0}]}'"
+      fmt=$clr$fmt${colour[0]}
+      printf "$fmt" $msgnum $status $filter_file "$from" $mailbox \
+                                          $msgsize "$subject"
+    done
+    }
